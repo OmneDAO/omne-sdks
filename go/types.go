@@ -43,7 +43,7 @@ func (q *Quar) ToOMC() *big.Float {
 	if q.Int == nil {
 		return big.NewFloat(0)
 	}
-	
+
 	omcFloat := new(big.Float).SetInt(q.Int)
 	divisor := new(big.Float).SetInt(QuarPerOMC)
 	return omcFloat.Quo(omcFloat, divisor)
@@ -62,7 +62,7 @@ func (q *Quar) ToOMCString(decimals int) string {
 	if decimals < 0 {
 		decimals = 6 // Default to 6 decimal places
 	}
-	
+
 	omcFloat := q.ToOMC()
 	format := fmt.Sprintf("%%.%df", decimals)
 	return fmt.Sprintf(format, omcFloat)
@@ -98,10 +98,10 @@ func ToQuarFromOMC(omcStr string) (*Quar, error) {
 	if !ok {
 		return nil, fmt.Errorf("invalid OMC string: %s", omcStr)
 	}
-	
+
 	// Multiply by QuarPerOMC to convert to quar
 	quarFloat := new(big.Float).Mul(omcFloat, new(big.Float).SetInt(QuarPerOMC))
-	
+
 	// Convert to big.Int (truncating any fractional quar)
 	quarInt, _ := quarFloat.Int(nil)
 	return NewQuar(quarInt), nil
@@ -120,9 +120,9 @@ func FormatBalance(quar *Quar, decimals int) string {
 	if decimals < 0 {
 		decimals = 6
 	}
-	
+
 	omcStr := quar.ToOMCString(decimals)
-	
+
 	// Add OMC suffix
 	return fmt.Sprintf("%s OMC", omcStr)
 }
@@ -132,12 +132,12 @@ func IsValidAddress(address string) bool {
 	if len(address) == 0 {
 		return false
 	}
-	
+
 	// Check for Omne address format (omne1...)
 	if strings.HasPrefix(address, "omne1") {
 		return isValidOmneAddress(address)
 	}
-	
+
 	// For backward compatibility, also accept hex addresses
 	return isValidHexAddress(address)
 }
@@ -147,7 +147,7 @@ func isValidOmneAddress(address string) bool {
 	if !strings.HasPrefix(address, "omne1") {
 		return false
 	}
-	
+
 	encoded := address[5:] // Remove "omne1" prefix
 	return isValidBase32(encoded)
 }
@@ -156,22 +156,20 @@ func isValidOmneAddress(address string) bool {
 func isValidHexAddress(address string) bool {
 	// Remove 0x prefix if present (case insensitive)
 	cleanAddr := strings.ToLower(address)
-	if strings.HasPrefix(cleanAddr, "0x") {
-		cleanAddr = cleanAddr[2:]
-	}
-	
+	cleanAddr = strings.TrimPrefix(cleanAddr, "0x")
+
 	// Check length (40 hex characters = 20 bytes)
 	if len(cleanAddr) != 40 {
 		return false
 	}
-	
+
 	// Check if all characters are valid hex
 	for _, char := range cleanAddr {
 		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -179,7 +177,7 @@ func isValidHexAddress(address string) bool {
 func isValidBase32(encoded string) bool {
 	// Omne alphabet (no 0, O, I, L for readability)
 	const alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-	
+
 	for _, char := range encoded {
 		valid := false
 		for _, validChar := range alphabet {
@@ -192,7 +190,7 @@ func isValidBase32(encoded string) bool {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
@@ -201,12 +199,12 @@ func NormalizeAddress(address string) (string, error) {
 	if !IsValidAddress(address) {
 		return "", fmt.Errorf("invalid address format: %s", address)
 	}
-	
+
 	cleanAddr := strings.ToLower(address)
 	if strings.HasPrefix(cleanAddr, "0x") {
 		return cleanAddr, nil
 	}
-	
+
 	return "0x" + cleanAddr, nil
 }
 
@@ -216,14 +214,14 @@ func ToChecksumAddress(address string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	
+
 	// Remove 0x prefix for hashing
 	addrWithoutPrefix := normalized[2:]
-	
+
 	// Hash with Keccak-256
 	hash := crypto.Keccak256([]byte(addrWithoutPrefix))
 	hashHex := hex.EncodeToString(hash)
-	
+
 	result := "0x"
 	for i, char := range addrWithoutPrefix {
 		if i < len(hashHex) {
@@ -238,7 +236,7 @@ func ToChecksumAddress(address string) (string, error) {
 			result += string(char)
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -253,7 +251,7 @@ func FromOmneAddress(address string) ([20]byte, error) {
 	if !strings.HasPrefix(address, "omne1") {
 		return [20]byte{}, fmt.Errorf("invalid Omne address format - must start with 'omne1'")
 	}
-	
+
 	encoded := address[5:] // Remove "omne1" prefix
 	return omneDecode(encoded)
 }
@@ -262,38 +260,38 @@ func FromOmneAddress(address string) ([20]byte, error) {
 func omneEncode(bytes [20]byte) string {
 	// Custom base32 alphabet optimized for readability (no 0, O, I, L)
 	const alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-	
+
 	// Convert bytes to big integer
 	num := new(big.Int).SetBytes(bytes[:])
-	
+
 	if num.Cmp(big.NewInt(0)) == 0 {
 		return string(alphabet[0])
 	}
-	
+
 	var result []byte
 	base := big.NewInt(32)
 	remainder := new(big.Int)
-	
+
 	for num.Cmp(big.NewInt(0)) > 0 {
 		num.DivMod(num, base, remainder)
 		result = append(result, alphabet[remainder.Int64()])
 	}
-	
+
 	// Reverse the result
 	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
 		result[i], result[j] = result[j], result[i]
 	}
-	
+
 	return string(result)
 }
 
 // omneDecode decodes Omne base32 format back to bytes
 func omneDecode(encoded string) ([20]byte, error) {
 	const alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-	
+
 	num := big.NewInt(0)
 	base := big.NewInt(32)
-	
+
 	for _, ch := range encoded {
 		value := -1
 		for i, c := range alphabet {
@@ -302,24 +300,24 @@ func omneDecode(encoded string) ([20]byte, error) {
 				break
 			}
 		}
-		
+
 		if value == -1 {
 			return [20]byte{}, fmt.Errorf("invalid character in Omne address: %c", ch)
 		}
-		
+
 		num.Mul(num, base)
 		num.Add(num, big.NewInt(int64(value)))
 	}
-	
+
 	// Convert back to 20 bytes
 	bytes := num.Bytes()
 	var result [20]byte
-	
+
 	// Pad with zeros if necessary
 	if len(bytes) > 20 {
 		return [20]byte{}, fmt.Errorf("address value too large")
 	}
-	
+
 	copy(result[20-len(bytes):], bytes)
 	return result, nil
 }
@@ -334,21 +332,21 @@ func CalculateGasCost(gasUsed uint64, gasPriceQuar *Quar) *Quar {
 // EstimateGas provides gas estimates for different transaction types
 func EstimateGas(transactionType string, hasData bool) uint64 {
 	baseGas := map[string]uint64{
-		"transfer":        21000,
-		"tokenTransfer":   65000,
-		"contractDeploy":  200000,
-		"orc20Deploy":     350000,
-		"computeJob":      150000,
+		"transfer":       21000,
+		"tokenTransfer":  65000,
+		"contractDeploy": 200000,
+		"orc20Deploy":    350000,
+		"computeJob":     150000,
 	}
-	
+
 	gas, exists := baseGas[transactionType]
 	if !exists {
 		gas = 21000 // Default to simple transfer
 	}
-	
+
 	if hasData {
 		gas += 20000 // Additional gas for data
 	}
-	
+
 	return gas
 }

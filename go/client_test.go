@@ -143,6 +143,7 @@ func TestRPCStructures(t *testing.T) {
 
 		assert.Equal(t, "2.0", req.JSONRPC)
 		assert.Equal(t, "omne_getNetworkInfo", req.Method)
+		assert.Nil(t, req.Params)
 		assert.Equal(t, int64(1), req.ID)
 	})
 
@@ -171,7 +172,7 @@ func TestNetworkInfoStructure(t *testing.T) {
 				"compute":  "2000",
 			},
 			Features: NetworkFeatures{
-				DualLayerConsensus:          true,
+				DualLayerConsensus:         true,
 				MicroscopicFees:            true,
 				InstantFinality:            true,
 				ComputationalOrchestration: true,
@@ -181,6 +182,9 @@ func TestNetworkInfoStructure(t *testing.T) {
 		assert.Equal(t, int64(42), networkInfo.ChainID)
 		assert.Equal(t, "principalis", networkInfo.NetworkType)
 		assert.Equal(t, int64(12345), networkInfo.LatestBlock)
+		assert.Equal(t, "1000", networkInfo.GasPrice["base"])
+		assert.Equal(t, "500", networkInfo.GasPrice["commerce"])
+		assert.Equal(t, "2000", networkInfo.GasPrice["compute"])
 		assert.True(t, networkInfo.Features.DualLayerConsensus)
 		assert.True(t, networkInfo.Features.MicroscopicFees)
 	})
@@ -203,24 +207,31 @@ func TestTransactionStructure(t *testing.T) {
 		assert.Equal(t, "0x8ba1f109551bd432803012645cac136c8a96e6e8", tx.To)
 		assert.Equal(t, "1500000000000000000", tx.Value)
 		assert.Equal(t, uint64(21000), tx.GasLimit)
+		assert.Equal(t, "1000", tx.GasPrice)
+		assert.Equal(t, "", tx.Data)
+		assert.Equal(t, uint64(5), tx.Nonce)
 		assert.Equal(t, "commerce", tx.Priority)
 	})
 
 	t.Run("TransactionReceipt", func(t *testing.T) {
 		receipt := &TransactionReceipt{
-			TransactionHash:   "0xabcd1234...",
-			BlockNumber:       12345,
-			BlockHash:         "0x5678efgh...",
-			TransactionIndex:  1,
-			From:              "0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e",
-			To:                "0x8ba1f109551bd432803012645cac136c8a96e6e8",
-			GasUsed:           21000,
-			Status:            1,
-			ConfirmationTime:  280,
+			TransactionHash:  "0xabcd1234...",
+			BlockNumber:      12345,
+			BlockHash:        "0x5678efgh...",
+			TransactionIndex: 1,
+			From:             "0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e",
+			To:               "0x8ba1f109551bd432803012645cac136c8a96e6e8",
+			GasUsed:          21000,
+			Status:           1,
+			ConfirmationTime: 280,
 		}
 
 		assert.Equal(t, "0xabcd1234...", receipt.TransactionHash)
 		assert.Equal(t, int64(12345), receipt.BlockNumber)
+		assert.Equal(t, "0x5678efgh...", receipt.BlockHash)
+		assert.Equal(t, 1, receipt.TransactionIndex)
+		assert.Equal(t, "0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e", receipt.From)
+		assert.Equal(t, "0x8ba1f109551bd432803012645cac136c8a96e6e8", receipt.To)
 		assert.Equal(t, uint64(21000), receipt.GasUsed)
 		assert.Equal(t, 1, receipt.Status)
 		assert.Equal(t, int64(280), receipt.ConfirmationTime)
@@ -237,14 +248,16 @@ func TestORC20TokenStructure(t *testing.T) {
 			TotalSupply: "1000000000000000000000000", // 1M tokens
 			Config: map[string]interface{}{
 				"inheritsMicroscopicFees": true,
-				"mintable":               true,
-				"burnable":               false,
+				"mintable":                true,
+				"burnable":                false,
 			},
 		}
 
+		assert.Equal(t, "0x1234567890abcdef1234567890abcdef12345678", token.Address)
 		assert.Equal(t, "Test Token", token.Name)
 		assert.Equal(t, "TEST", token.Symbol)
 		assert.Equal(t, 18, token.Decimals)
+		assert.Equal(t, "1000000000000000000000000", token.TotalSupply)
 		assert.True(t, token.Config["inheritsMicroscopicFees"].(bool))
 	})
 }
@@ -253,7 +266,7 @@ func TestComputationalJobStructure(t *testing.T) {
 	t.Run("ComputationalJob", func(t *testing.T) {
 		now := time.Now()
 		completedAt := now.Add(5 * time.Minute)
-		
+
 		job := &ComputationalJob{
 			JobID:   "job-12345",
 			JobType: "ml_training",
@@ -272,9 +285,12 @@ func TestComputationalJobStructure(t *testing.T) {
 
 		assert.Equal(t, "job-12345", job.JobID)
 		assert.Equal(t, "ml_training", job.JobType)
+		assert.Equal(t, "neural_network", job.Parameters["model"])
 		assert.Equal(t, "completed", job.Status)
 		assert.Equal(t, 100.0, job.Progress)
+		assert.Equal(t, "Model trained successfully", job.Result)
 		assert.Equal(t, "5.25", job.CostOMC)
+		assert.Equal(t, now, job.SubmittedAt)
 		assert.NotNil(t, job.CompletedAt)
 	})
 }
@@ -302,7 +318,7 @@ func TestClientTimeout(t *testing.T) {
 	t.Run("ClientHasTimeout", func(t *testing.T) {
 		client, err := NewClient("http://localhost:8545")
 		require.NoError(t, err)
-		
+
 		// Verify HTTP client has timeout
 		assert.Equal(t, 30*time.Second, client.httpClient.Timeout)
 	})
@@ -316,7 +332,7 @@ func TestNetworkConfigIntegration(t *testing.T) {
 				assert.True(t, config.ChainID >= 0)
 				assert.NotNil(t, config.GasPrice)
 				assert.True(t, config.GasPrice.Cmp(NewQuar(big.NewInt(0))) > 0)
-				
+
 				// Test client creation
 				client, err := NewClientForNetwork(networkName)
 				require.NoError(t, err)
