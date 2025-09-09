@@ -340,3 +340,99 @@ def safe_str(value: Union[str, int, None], default: str = "") -> str:
     if value is None:
         return default
     return str(value)
+
+
+def generate_block_hash(data=None) -> str:
+    """
+    Generate Omne block hash with bh_ prefix
+    
+    Args:
+        data: Optional data to include in hash generation
+        
+    Returns:
+        Block hash with bh_ prefix (63 chars total)
+        
+    Example:
+        >>> generate_block_hash()
+        'bh_a1b2c3d4e5f6789012345678901234567890123456789012345678901234'
+    """
+    import secrets
+    
+    # Generate 30 random bytes (60 hex chars)
+    random_bytes = secrets.token_bytes(30)
+    hex_string = random_bytes.hex()
+    
+    return f"bh_{hex_string}"
+
+
+def generate_transaction_hash(data=None) -> str:
+    """
+    Generate Omne transaction hash with tx_ prefix
+    
+    Args:
+        data: Optional data to include in hash generation
+        
+    Returns:
+        Transaction hash with tx_ prefix (63 chars total)
+        
+    Example:
+        >>> generate_transaction_hash()
+        'tx_a1b2c3d4e5f6789012345678901234567890123456789012345678901234'
+    """
+    import secrets
+    
+    # Generate 30 random bytes (60 hex chars)
+    random_bytes = secrets.token_bytes(30)
+    hex_string = random_bytes.hex()
+    
+    return f"tx_{hex_string}"
+
+
+def is_valid_block_hash(hash_value: str) -> bool:
+    """
+    Validate Omne block hash format
+    
+    Args:
+        hash_value: Hash to validate
+        
+    Returns:
+        True if valid block hash format
+        
+    Example:
+        >>> is_valid_block_hash("bh_a1b2c3d4e5f6789012345678901234567890123456789012345678901234")
+        True
+        >>> is_valid_block_hash("0x123")
+        False
+    """
+    import re
+    
+    if not isinstance(hash_value, str) or not hash_value.startswith('bh_'):
+        return False
+    
+    hex_part = hash_value[3:]  # Remove 'bh_' prefix
+    return len(hex_part) == 60 and re.match(r'^[0-9a-fA-F]{60}$', hex_part) is not None
+
+
+def is_valid_transaction_hash(hash_value: str) -> bool:
+    """
+    Validate Omne transaction hash format
+    
+    Args:
+        hash_value: Hash to validate
+        
+    Returns:
+        True if valid transaction hash format
+        
+    Example:
+        >>> is_valid_transaction_hash("tx_a1b2c3d4e5f6789012345678901234567890123456789012345678901234")
+        True
+        >>> is_valid_transaction_hash("0x123")
+        False
+    """
+    import re
+    
+    if not isinstance(hash_value, str) or not hash_value.startswith('tx_'):
+        return False
+    
+    hex_part = hash_value[3:]  # Remove 'tx_' prefix
+    return len(hex_part) == 60 and re.match(r'^[0-9a-fA-F]{60}$', hex_part) is not None

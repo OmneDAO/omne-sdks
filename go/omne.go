@@ -59,8 +59,11 @@
 package omne
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math/big"
+	"regexp"
+	"strings"
 )
 
 // SDK version information
@@ -72,33 +75,33 @@ const (
 // Network configurations for different Omne networks
 var NetworkConfigs = map[string]NetworkConfig{
 	"primum": {
-		ChainID: 0,
-		URL:     "ws://localhost:8545",
+		ChainID:  0,
+		URL:      "ws://localhost:8545",
 		GasPrice: NewQuar(big.NewInt(1000)), // 1000 quar per gas
 		Features: NetworkFeatures{
-			DualLayerConsensus:          true,
+			DualLayerConsensus:         true,
 			MicroscopicFees:            true,
 			InstantFinality:            true,
 			ComputationalOrchestration: true,
 		},
 	},
 	"testum": {
-		ChainID: 1,
-		URL:     "wss://testnet.omne.org",
+		ChainID:  1,
+		URL:      "wss://testnet.omne.org",
 		GasPrice: NewQuar(big.NewInt(500)), // 500 quar per gas
 		Features: NetworkFeatures{
-			DualLayerConsensus:          true,
+			DualLayerConsensus:         true,
 			MicroscopicFees:            true,
 			InstantFinality:            true,
 			ComputationalOrchestration: false,
 		},
 	},
 	"principalis": {
-		ChainID: 42,
-		URL:     "wss://mainnet.omne.org",
+		ChainID:  42,
+		URL:      "wss://mainnet.omne.org",
 		GasPrice: NewQuar(big.NewInt(1000)), // 1000 quar per gas
 		Features: NetworkFeatures{
-			DualLayerConsensus:          true,
+			DualLayerConsensus:         true,
 			MicroscopicFees:            true,
 			InstantFinality:            true,
 			ComputationalOrchestration: true,
@@ -120,28 +123,67 @@ func NewClientForNetwork(network string) (*Client, error) {
 	if !exists {
 		return nil, fmt.Errorf("unknown network: %s", network)
 	}
-	
+
 	return NewClient(config.URL)
 }
 
 // GetSDKInfo returns information about the SDK
 func GetSDKInfo() map[string]interface{} {
 	return map[string]interface{}{
-		"name":               Name,
-		"version":            Version,
-		"quarPrecision":      QuarPrecision,
-		"supportedNetworks":  []string{"primum", "testum", "principalis"},
+		"name":              Name,
+		"version":           Version,
+		"quarPrecision":     QuarPrecision,
+		"supportedNetworks": []string{"primum", "testum", "principalis"},
 		"features": map[string]bool{
-			"hdWallets":               true,
-			"bip39":                   true,
-			"bip44":                   true,
-			"secp256k1":              true,
-			"jsonRPC":                true,
-			"websockets":             true,
-			"orc20Tokens":            true,
-			"computationalJobs":      true,
-			"microscopicFees":        true,
-			"dualLayerConsensus":     true,
+			"hdWallets":          true,
+			"bip39":              true,
+			"bip44":              true,
+			"secp256k1":          true,
+			"jsonRPC":            true,
+			"websockets":         true,
+			"orc20Tokens":        true,
+			"computationalJobs":  true,
+			"microscopicFees":    true,
+			"dualLayerConsensus": true,
 		},
 	}
+}
+
+// GenerateBlockHash generates Omne block hash with bh_ prefix
+func GenerateBlockHash() string {
+	return "bh_" + generateRandomHex(60)
+}
+
+// GenerateTransactionHash generates Omne transaction hash with tx_ prefix
+func GenerateTransactionHash() string {
+	return "tx_" + generateRandomHex(60)
+}
+
+// IsValidBlockHash validates Omne block hash format
+func IsValidBlockHash(hash string) bool {
+	if len(hash) != 63 || !strings.HasPrefix(hash, "bh_") {
+		return false
+	}
+
+	hexPart := hash[3:]
+	matched, _ := regexp.MatchString("^[0-9a-fA-F]{60}$", hexPart)
+	return matched
+}
+
+// IsValidTransactionHash validates Omne transaction hash format
+func IsValidTransactionHash(hash string) bool {
+	if len(hash) != 63 || !strings.HasPrefix(hash, "tx_") {
+		return false
+	}
+
+	hexPart := hash[3:]
+	matched, _ := regexp.MatchString("^[0-9a-fA-F]{60}$", hexPart)
+	return matched
+}
+
+// generateRandomHex generates random hex string of specified length
+func generateRandomHex(length int) string {
+	bytes := make([]byte, length/2)
+	rand.Read(bytes)
+	return fmt.Sprintf("%x", bytes)
 }

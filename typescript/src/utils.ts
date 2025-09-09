@@ -322,6 +322,60 @@ export function randomHex(bytes: number): string {
 }
 
 /**
+ * Generate Omne block hash with bh_ prefix
+ */
+export function generateBlockHash(data?: any): string {
+  const randomBytes = new Uint8Array(30); // 30 bytes = 60 hex chars
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(randomBytes);
+  } else {
+    const crypto = require('crypto');
+    crypto.randomFillSync(randomBytes);
+  }
+  
+  return 'bh_' + Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Generate Omne transaction hash with tx_ prefix
+ */
+export function generateTransactionHash(data?: any): string {
+  const randomBytes = new Uint8Array(30); // 30 bytes = 60 hex chars
+  if (typeof window !== 'undefined' && window.crypto) {
+    window.crypto.getRandomValues(randomBytes);
+  } else {
+    const crypto = require('crypto');
+    crypto.randomFillSync(randomBytes);
+  }
+  
+  return 'tx_' + Array.from(randomBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Validate Omne block hash format
+ */
+export function isValidBlockHash(hash: string): boolean {
+  if (typeof hash !== 'string' || !hash.startsWith('bh_')) {
+    return false;
+  }
+  
+  const hexPart = hash.slice(3); // Remove 'bh_' prefix
+  return hexPart.length === 60 && /^[0-9a-fA-F]{60}$/.test(hexPart);
+}
+
+/**
+ * Validate Omne transaction hash format
+ */
+export function isValidTransactionHash(hash: string): boolean {
+  if (typeof hash !== 'string' || !hash.startsWith('tx_')) {
+    return false;
+  }
+  
+  const hexPart = hash.slice(3); // Remove 'tx_' prefix
+  return hexPart.length === 60 && /^[0-9a-fA-F]{60}$/.test(hexPart);
+}
+
+/**
  * Sleep utility for async operations
  */
 export function sleep(ms: number): Promise<void> {
