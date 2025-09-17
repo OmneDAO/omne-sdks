@@ -324,7 +324,7 @@ export function randomHex(bytes: number): string {
 /**
  * Generate Omne block hash with bh_ prefix
  */
-export function generateBlockHash(data?: any): string {
+export function generateBlockHash(): string {
   const randomBytes = new Uint8Array(30); // 30 bytes = 60 hex chars
   if (typeof window !== 'undefined' && window.crypto) {
     window.crypto.getRandomValues(randomBytes);
@@ -339,7 +339,7 @@ export function generateBlockHash(data?: any): string {
 /**
  * Generate Omne transaction hash with tx_ prefix
  */
-export function generateTransactionHash(data?: any): string {
+export function generateTransactionHash(): string {
   const randomBytes = new Uint8Array(30); // 30 bytes = 60 hex chars
   if (typeof window !== 'undefined' && window.crypto) {
     window.crypto.getRandomValues(randomBytes);

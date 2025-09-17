@@ -40,6 +40,10 @@ import {
   retry,
   sleep
 } from './utils';
+import { 
+  SecureRequestManager, 
+  RateLimiter
+} from './secure-client';
 
 /**
  * Main Omne blockchain client
@@ -48,7 +52,8 @@ export class OmneClient {
   private config: Required<ClientConfig>;
   private ws?: WebSocket;
   private isConnected: boolean = false;
-  private requestId: number = 1;
+  private secureRequestManager: SecureRequestManager;
+  private rateLimiter: RateLimiter;
   private pendingRequests = new Map<string, {
     resolve: (value: any) => void;
     reject: (error: Error) => void;
@@ -76,6 +81,14 @@ export class OmneClient {
         ...config
       };
     }
+
+    // Initialize secure components
+    this.secureRequestManager = new SecureRequestManager();
+    this.rateLimiter = new RateLimiter({
+      requestsPerSecond: 100,
+      burstLimit: 10,
+      windowMs: 1000
+    });
 
     // Validate URL
     try {
@@ -486,7 +499,13 @@ export class OmneClient {
   }
 
   private async request<T = any>(method: string, params?: any[]): Promise<T> {
-    const requestId = (this.requestId++).toString();
+    // Check rate limiting
+    if (!this.rateLimiter.isAllowed()) {
+      const delay = this.rateLimiter.getRetryDelay();
+      throw new Error(`Rate limit exceeded. Retry after ${delay}ms`);
+    }
+
+    const requestId = this.secureRequestManager.generateRequestId();
     const request: RPCRequest = {
       jsonrpc: '2.0',
       method,
