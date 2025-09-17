@@ -1,8 +1,10 @@
 package omne
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net/http"
 	"time"
 )
@@ -98,7 +100,28 @@ func (config *SecureClientConfig) CreateSecureHTTPClient() *http.Client {
 
 // verifyCertificatePins verifies certificate pins against the connection
 func verifyCertificatePins(cs tls.ConnectionState, pins []string) error {
-	// Implementation would verify certificate fingerprints
-	// This is a placeholder for the actual implementation
-	return nil
+	// If no pins specified, skip verification
+	if len(pins) == 0 {
+		return nil
+	}
+	
+	// Get peer certificates from connection state
+	if len(cs.PeerCertificates) == 0 {
+		return fmt.Errorf("no peer certificates available for pin verification")
+	}
+	
+	// Verify each pin against the certificate chain
+	for _, cert := range cs.PeerCertificates {
+		// Calculate SHA256 fingerprint of the certificate
+		fingerprint := fmt.Sprintf("%x", sha256.Sum256(cert.Raw))
+		
+		// Check if this fingerprint matches any of the pins
+		for _, pin := range pins {
+			if pin == fingerprint {
+				return nil // Pin verified successfully
+			}
+		}
+	}
+	
+	return fmt.Errorf("certificate pin verification failed: no matching pins found")
 }

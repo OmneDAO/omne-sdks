@@ -9,7 +9,6 @@ import * as bip39 from 'bip39';
 import HDKey from 'hdkey';
 import { publicKeyCreate, ecdsaSign } from 'secp256k1';
 import { keccak256 } from 'js-sha3';
-import { randomBytes, createCipher, createDecipher } from 'crypto';
 import { 
   WalletConfig, 
   Keystore, 
@@ -24,6 +23,12 @@ import {
   bufferToHex,
   hexToBuffer 
 } from './utils';
+import {
+  secureEncrypt,
+  secureDecrypt,
+  secureZero,
+  SecureEncryptionResult
+} from './secure-crypto';
 
 /**
  * Individual account with signing capabilities
@@ -85,37 +90,26 @@ export class WalletAccount {
       throw new WalletError('Password required for keystore encryption', 'keystore_export');
     }
 
-    const salt = randomBytes(32);
-    const iv = randomBytes(16);
-    
-    // Simple encryption for demo (in production, use proper key derivation)
-    const cipher = createCipher('aes-256-ctr', password + salt.toString('hex'));
-    const encrypted = Buffer.concat([
-      cipher.update(this.privateKey.slice(2), 'hex'),
-      cipher.final()
-    ]);
-
-    const mac = keccak256(Buffer.concat([encrypted, Buffer.from(password)]));
+    // Use secure encryption with proper key derivation
+    const encryptionResult = secureEncrypt(
+      this.privateKey.slice(2), // Remove 0x prefix
+      password,
+      { algorithm: 'pbkdf2', iterations: 100000, saltLength: 32 }
+    );
 
     return {
       version: 3,
       id: this.generateUUID(),
       address: this.address.toLowerCase().slice(2),
       crypto: {
-        ciphertext: encrypted.toString('hex'),
+        ciphertext: encryptionResult.ciphertext,
         cipherparams: {
-          iv: iv.toString('hex')
+          iv: encryptionResult.iv
         },
-        cipher: 'aes-256-ctr',
-        kdf: 'scrypt',
-        kdfparams: {
-          dklen: 32,
-          salt: salt.toString('hex'),
-          n: 262144,
-          r: 8,
-          p: 1
-        },
-        mac: mac
+        cipher: encryptionResult.algorithm,
+        kdf: encryptionResult.kdf,
+        kdfparams: encryptionResult.kdfParams,
+        mac: encryptionResult.mac
       }
     };
   }
@@ -129,13 +123,23 @@ export class WalletAccount {
     }
 
     try {
-      const decipher = createDecipher('aes-256-ctr', password + keystore.crypto.kdfparams.salt);
-      const decrypted = Buffer.concat([
-        decipher.update(keystore.crypto.ciphertext, 'hex'),
-        decipher.final()
-      ]);
+      // Reconstruct the encryption result object for secure decryption
+      const encryptionResult: SecureEncryptionResult = {
+        ciphertext: keystore.crypto.ciphertext,
+        salt: keystore.crypto.kdfparams.salt,
+        iv: keystore.crypto.cipherparams.iv,
+        algorithm: keystore.crypto.cipher,
+        kdf: keystore.crypto.kdf,
+        kdfParams: keystore.crypto.kdfparams,
+        mac: keystore.crypto.mac
+      };
 
+      const decrypted = secureDecrypt(encryptionResult, password);
       const privateKey = '0x' + decrypted.toString('hex');
+      
+      // Securely zero the decrypted buffer
+      secureZero(decrypted);
+      
       return new WalletAccount(privateKey);
     } catch (error) {
       throw WalletError.keystoreError('decryption', 'Invalid password or corrupted keystore');
