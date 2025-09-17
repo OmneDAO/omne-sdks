@@ -15,11 +15,11 @@ import (
 
 // Wallet represents a BIP39 HD wallet
 type Wallet struct {
-	mnemonic   string
-	seed       []byte
-	masterKey  *hdkeychain.ExtendedKey
-	accounts   map[uint32]*Account
-	address    string // Address of the first account (index 0)
+	mnemonic  string
+	seed      []byte
+	masterKey *hdkeychain.ExtendedKey
+	accounts  map[uint32]*Account
+	address   string // Address of the first account (index 0)
 }
 
 // Account represents a single account derived from the HD wallet
@@ -38,7 +38,7 @@ func NewWallet(mnemonic string) (*Wallet, error) {
 	}
 
 	seed := bip39.NewSeed(mnemonic, "")
-	
+
 	// Create master key using btcsuite for BIP32
 	masterKey, err := hdkeychain.NewMaster(seed, &chaincfg.MainNetParams)
 	if err != nil {
@@ -171,10 +171,10 @@ func (w *Wallet) deriveAccount(index uint32) (*Account, error) {
 
 	// Generate address from public key
 	addressBytes := crypto.PubkeyToAddress(*publicKey)
-	
+
 	// Convert to Omne address format
 	address := ToOmneAddress(addressBytes)
-	
+
 	path := fmt.Sprintf("m/44'/60'/0'/0/%d", index)
 
 	return &Account{
@@ -187,9 +187,37 @@ func (w *Wallet) deriveAccount(index uint32) (*Account, error) {
 }
 
 // GetPrivateKey returns the account's private key as hex string
+// WARNING: This exposes the private key in memory. Use GetPrivateKeySecure() for better security.
 func (a *Account) GetPrivateKey() string {
 	privateKeyBytes := crypto.FromECDSA(a.privateKey)
-	return hex.EncodeToString(privateKeyBytes)
+	hexStr := hex.EncodeToString(privateKeyBytes)
+
+	// Zero out the byte slice immediately
+	for i := range privateKeyBytes {
+		privateKeyBytes[i] = 0
+	}
+
+	return hexStr
+}
+
+// GetPrivateKeySecure returns the account's private key as SecureString
+// The returned SecureString should be destroyed after use by calling Destroy()
+func (a *Account) GetPrivateKeySecure() *SecureString {
+	privateKeyBytes := crypto.FromECDSA(a.privateKey)
+	hexStr := hex.EncodeToString(privateKeyBytes)
+
+	// Zero out the byte slice immediately
+	for i := range privateKeyBytes {
+		privateKeyBytes[i] = 0
+	}
+
+	// Create secure string and zero out the original
+	secureStr := NewSecureString(hexStr)
+
+	// Note: Go strings are immutable, so we cannot zero the original hex string
+	// The SecureString provides the secure memory management
+
+	return secureStr
 }
 
 // GetPublicKey returns the account's public key as hex string
@@ -222,6 +250,24 @@ func (a *Account) SignHash(hash []byte) ([]byte, error) {
 	return signature, nil
 }
 
+// SignHashSecure signs a hash with secure memory handling
+func (a *Account) SignHashSecure(hash []byte) (*SecureBytes, error) {
+	signature, err := crypto.Sign(hash, a.privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign hash: %w", err)
+	}
+
+	// Create secure bytes from signature
+	secureSignature := NewSecureBytesFromSlice(signature)
+
+	// Zero out the original signature
+	for i := range signature {
+		signature[i] = 0
+	}
+
+	return secureSignature, nil
+}
+
 // SignMessage signs a message with Ethereum's personal message format
 func (a *Account) SignMessage(message string) ([]byte, error) {
 	messageHash := crypto.Keccak256Hash([]byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(message), message)))
@@ -232,7 +278,7 @@ func (a *Account) SignMessage(message string) ([]byte, error) {
 func NewAccountFromPrivateKey(privateKeyHex string) (*Account, error) {
 	// Remove 0x prefix if present
 	privateKeyHex = strings.TrimPrefix(privateKeyHex, "0x")
-	
+
 	privateKeyBytes, err := hex.DecodeString(privateKeyHex)
 	if err != nil {
 		return nil, fmt.Errorf("invalid private key hex: %w", err)

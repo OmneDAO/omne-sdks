@@ -20,6 +20,7 @@ from .exceptions import (
     NetworkError, TransactionError, ValidationError, 
     InsufficientFundsError, JobExecutionError
 )
+from .security import SecurityConfig, SecureRequestIDGenerator, create_secure_session, default_security_config
 
 
 class OmneClient:
@@ -35,7 +36,8 @@ class OmneClient:
         rpc_url: str = "http://localhost:8545",
         ws_url: Optional[str] = None,
         timeout: int = 30,
-        max_retries: int = 3
+        max_retries: int = 3,
+        security_config: Optional[SecurityConfig] = None
     ):
         """
         Initialize Omne client
@@ -43,16 +45,27 @@ class OmneClient:
         Args:
             rpc_url: HTTP RPC endpoint URL
             ws_url: WebSocket endpoint URL (optional)
-            timeout: Request timeout in seconds
-            max_retries: Maximum retry attempts for failed requests
+            timeout: Request timeout in seconds (deprecated, use security_config)
+            max_retries: Maximum retry attempts (deprecated, use security_config)
+            security_config: Security configuration object
         """
         self.rpc_url = rpc_url
         self.ws_url = ws_url or rpc_url.replace('http', 'ws')
-        self.timeout = timeout
-        self.max_retries = max_retries
+        
+        # Use provided security config or create default
+        if security_config is None:
+            self.security_config = default_security_config()
+            # Apply legacy parameters if provided
+            if timeout != 30:
+                self.security_config.request_timeout = timeout
+            if max_retries != 3:
+                self.security_config.max_retries = max_retries
+        else:
+            self.security_config = security_config
+            
         self._session: Optional[aiohttp.ClientSession] = None
         self._ws_connection: Optional[websockets.WebSocketServerProtocol] = None
-        self._request_id = 0
+        self._id_generator = SecureRequestIDGenerator()
         
     async def __aenter__(self):
         """Async context manager entry"""
@@ -64,11 +77,9 @@ class OmneClient:
         await self.close()
     
     async def _ensure_session(self):
-        """Ensure HTTP session is created"""
+        """Ensure HTTP session is created with secure configuration"""
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=self.timeout)
-            )
+            self._session = create_secure_session(self.security_config)
     
     async def close(self):
         """Close all connections"""
@@ -78,9 +89,8 @@ class OmneClient:
             await self._ws_connection.close()
     
     def _get_request_id(self) -> int:
-        """Get next request ID"""
-        self._request_id += 1
-        return self._request_id
+        """Get next secure request ID"""
+        return self._id_generator.next_id()
     
     async def _make_request(self, method: str, params: List[Any] = None) -> Any:
         """
@@ -105,12 +115,11 @@ class OmneClient:
             "params": params or []
         }
         
-        for attempt in range(self.max_retries + 1):
+        for attempt in range(self.security_config.max_retries + 1):
             try:
                 async with self._session.post(
                     self.rpc_url,
-                    json=request_data,
-                    headers={"Content-Type": "application/json"}
+                    json=request_data
                 ) as response:
                     
                     if response.status != 200:
@@ -131,9 +140,9 @@ class OmneClient:
                     return result.get("result")
                     
             except aiohttp.ClientError as e:
-                if attempt == self.max_retries:
+                if attempt == self.security_config.max_retries:
                     raise NetworkError(f"Network request failed: {str(e)}")
-                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                await asyncio.sleep(self.security_config.retry_delay * (2 ** attempt))  # Exponential backoff
     
     # ===== Network Information =====
     
