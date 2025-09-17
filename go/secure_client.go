@@ -15,15 +15,15 @@ type SecureClientConfig struct {
 	InsecureSkipVerify bool     // Set to true only for testing
 	CertificatePins    []string // SHA256 hashes of pinned certificates
 	CustomCAs          []string // PEM-encoded custom CA certificates
-	
+
 	// Request Configuration
-	UseSecureRandom    bool          // Use cryptographically secure request IDs
-	RequestTimeout     time.Duration // Request timeout
-	MaxRetries         int           // Maximum retry attempts
-	
+	UseSecureRandom bool          // Use cryptographically secure request IDs
+	RequestTimeout  time.Duration // Request timeout
+	MaxRetries      int           // Maximum retry attempts
+
 	// Rate Limiting
-	RateLimitRequests  int           // Requests per second limit
-	RateLimitBurst     int           // Burst capacity
+	RateLimitRequests int // Requests per second limit
+	RateLimitBurst    int // Burst capacity
 }
 
 // DefaultSecureConfig returns a secure default configuration
@@ -56,7 +56,7 @@ func (config *SecureClientConfig) CreateSecureTLSConfig() *tls.Config {
 		},
 		PreferServerCipherSuites: false, // Use client preference
 	}
-	
+
 	// Add custom CA certificates if provided
 	if len(config.CustomCAs) > 0 {
 		certPool := x509.NewCertPool()
@@ -68,14 +68,14 @@ func (config *SecureClientConfig) CreateSecureTLSConfig() *tls.Config {
 		}
 		tlsConfig.RootCAs = certPool
 	}
-	
+
 	// Certificate pinning verification
 	if len(config.CertificatePins) > 0 {
 		tlsConfig.VerifyConnection = func(cs tls.ConnectionState) error {
 			return verifyCertificatePins(cs, config.CertificatePins)
 		}
 	}
-	
+
 	return tlsConfig
 }
 
@@ -91,7 +91,7 @@ func (config *SecureClientConfig) CreateSecureHTTPClient() *http.Client {
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-	
+
 	return &http.Client{
 		Transport: transport,
 		Timeout:   config.RequestTimeout,
@@ -104,17 +104,17 @@ func verifyCertificatePins(cs tls.ConnectionState, pins []string) error {
 	if len(pins) == 0 {
 		return nil
 	}
-	
+
 	// Get peer certificates from connection state
 	if len(cs.PeerCertificates) == 0 {
 		return fmt.Errorf("no peer certificates available for pin verification")
 	}
-	
+
 	// Verify each pin against the certificate chain
 	for _, cert := range cs.PeerCertificates {
 		// Calculate SHA256 fingerprint of the certificate
 		fingerprint := fmt.Sprintf("%x", sha256.Sum256(cert.Raw))
-		
+
 		// Check if this fingerprint matches any of the pins
 		for _, pin := range pins {
 			if pin == fingerprint {
@@ -122,6 +122,6 @@ func verifyCertificatePins(cs tls.ConnectionState, pins []string) error {
 			}
 		}
 	}
-	
+
 	return fmt.Errorf("certificate pin verification failed: no matching pins found")
 }
