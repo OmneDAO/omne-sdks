@@ -186,19 +186,28 @@ class Wallet:
         if index in self._accounts:
             return self._accounts[index]
         
-        # Derive private key using simplified derivation
-        # In production, would use proper BIP32/BIP44 derivation
+        # Use secure key derivation with proper PBKDF2 parameters
+        # Generate a unique salt for each account using secure random + index
+        import secrets
+        base_salt = secrets.token_bytes(16)  # 16 bytes of secure random data
+        index_bytes = index.to_bytes(4, byteorder='big')
+        account_salt = base_salt + index_bytes + b"omne_account_derivation"
+        
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=f"omne_account_{index}".encode(),
-            iterations=2048,
+            salt=account_salt,
+            iterations=100000,  # Increased from 2048 to 100,000 for security
             backend=default_backend()
         )
         
         private_key_bytes = kdf.derive(self._seed)
         account = Account(private_key_bytes)
         
+        # Zero out sensitive data immediately
+        for i in range(len(private_key_bytes)):
+            private_key_bytes[i] = 0
+            
         self._accounts[index] = account
         return account
     
@@ -229,37 +238,44 @@ class Wallet:
                 "encrypted": False
             }
         
-        # Encrypt private key
-        salt = os.urandom(16)
+        # Encrypt private key with secure parameters
+        import secrets
+        salt = secrets.token_bytes(32)  # Increased salt size to 32 bytes
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,
-            iterations=4096,
+            iterations=100000,  # Increased from 4096 to 100,000 iterations
             backend=default_backend()
         )
-        key = kdf.derive(password.encode())
+        encryption_key = kdf.derive(password.encode('utf-8'))
         
-        # Encrypt using AES
-        iv = os.urandom(16)
-        cipher = Cipher(
-            algorithms.AES(key),
-            modes.CBC(iv),
-            backend=default_backend()
-        )
-        encryptor = cipher.encryptor()
+        # Use AES-256-GCM for authenticated encryption
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
         
-        # Pad private key to 32 bytes
+        nonce = secrets.token_bytes(12)  # GCM nonce (96 bits)
+        aesgcm = AESGCM(encryption_key)
+        
+        # Get private key bytes
         private_key_bytes = bytes.fromhex(account.private_key_hex[2:])
-        padded_key = private_key_bytes + b'\x00' * (32 - len(private_key_bytes))
         
-        encrypted = encryptor.update(padded_key) + encryptor.finalize()
+        # Encrypt with authenticated encryption
+        ciphertext = aesgcm.encrypt(nonce, private_key_bytes, None)
+        
+        # Zero out sensitive data
+        for i in range(len(encryption_key)):
+            encryption_key[i] = 0
+        for i in range(len(private_key_bytes)):
+            private_key_bytes[i] = 0
         
         return {
             "address": account.address,
-            "encrypted_key": encrypted.hex(),
+            "encrypted_key": ciphertext.hex(),
             "salt": salt.hex(),
-            "iv": iv.hex(),
+            "nonce": nonce.hex(),  # GCM uses nonce instead of IV
+            "kdf": "pbkdf2",
+            "iterations": 100000,
+            "cipher": "aes-256-gcm",
             "encrypted": True
         }
     
@@ -283,31 +299,75 @@ class Wallet:
         if not password:
             raise WalletError("Password required for encrypted keystore")
         
-        # Decrypt private key
-        salt = bytes.fromhex(keystore["salt"])
-        iv = bytes.fromhex(keystore["iv"])
-        encrypted_key = bytes.fromhex(keystore["encrypted_key"])
+        # Check keystore format and decrypt accordingly
+        cipher_type = keystore.get("cipher", "aes-256-cbc")  # Default to old format
         
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=4096,
-            backend=default_backend()
-        )
-        key = kdf.derive(password.encode())
+        if cipher_type == "aes-256-gcm":
+            # New secure format with authenticated encryption
+            salt = bytes.fromhex(keystore["salt"])
+            nonce = bytes.fromhex(keystore["nonce"])
+            encrypted_key = bytes.fromhex(keystore["encrypted_key"])
+            iterations = keystore.get("iterations", 100000)
+            
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=iterations,
+                backend=default_backend()
+            )
+            decryption_key = kdf.derive(password.encode('utf-8'))
+            
+            from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+            aesgcm = AESGCM(decryption_key)
+            
+            try:
+                private_key_bytes = aesgcm.decrypt(nonce, encrypted_key, None)
+            except Exception:
+                raise WalletError("Invalid password or corrupted keystore")
+            finally:
+                # Zero out decryption key
+                for i in range(len(decryption_key)):
+                    decryption_key[i] = 0
+                    
+        else:
+            # Legacy format (CBC mode) - maintain backward compatibility
+            salt = bytes.fromhex(keystore["salt"])
+            iv = bytes.fromhex(keystore.get("iv", keystore.get("nonce", "")))
+            encrypted_key = bytes.fromhex(keystore["encrypted_key"])
+            iterations = keystore.get("iterations", 4096)
+            
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=iterations,
+                backend=default_backend()
+            )
+            key = kdf.derive(password.encode())
+            
+            cipher = Cipher(
+                algorithms.AES(key),
+                modes.CBC(iv),
+                backend=default_backend()
+            )
+            decryptor = cipher.decryptor()
+            
+            decrypted = decryptor.update(encrypted_key) + decryptor.finalize()
+            private_key_bytes = decrypted.rstrip(b'\x00')
+            
+            # Zero out key
+            for i in range(len(key)):
+                key[i] = 0
         
-        cipher = Cipher(
-            algorithms.AES(key),
-            modes.CBC(iv),
-            backend=default_backend()
-        )
-        decryptor = cipher.decryptor()
+        # Create account and zero out private key bytes
+        account = Account(private_key_bytes)
         
-        decrypted = decryptor.update(encrypted_key) + decryptor.finalize()
-        private_key_bytes = decrypted.rstrip(b'\x00')
-        
-        return Account(private_key_bytes)
+        # Zero out private key bytes
+        for i in range(len(private_key_bytes)):
+            private_key_bytes[i] = 0
+            
+        return account
     
     def sign_transaction(self, transaction: Transaction, account_index: int = 0) -> str:
         """
