@@ -7,8 +7,8 @@
 
 import * as bip39 from 'bip39';
 import HDKey from 'hdkey';
-import { publicKeyCreate, ecdsaSign } from 'secp256k1';
-import { keccak256 } from 'js-sha3';
+import * as secp256k1 from 'secp256k1';
+import * as sha3 from 'js-sha3';
 import { 
   WalletConfig, 
   Keystore, 
@@ -53,7 +53,7 @@ export class WalletAccount {
 
     // Generate public key from private key
     const privateKeyBuffer = hexToBuffer(privateKey);
-    const publicKeyBuffer = publicKeyCreate(privateKeyBuffer, false);
+    const publicKeyBuffer = secp256k1.publicKeyCreate(privateKeyBuffer, false);
     this.publicKey = bufferToHex(publicKeyBuffer);
 
     // Generate address from public key
@@ -77,7 +77,7 @@ export class WalletAccount {
    * Sign arbitrary data
    */
   signMessage(message: string): string {
-    const messageHash = keccak256(message);
+    const messageHash = sha3.keccak256(message);
     const signature = this.signHash(Buffer.from(messageHash, 'hex'));
     return bufferToHex(signature);
   }
@@ -153,7 +153,7 @@ export class WalletAccount {
     const publicKeyWithoutPrefix = publicKey.slice(1);
     
     // Hash with Keccak-256
-    const hash = keccak256(publicKeyWithoutPrefix);
+    const hash = sha3.keccak256(publicKeyWithoutPrefix);
     
     // Take last 20 bytes
     const addressBytes = new Uint8Array(Buffer.from(hash.slice(-40), 'hex'));
@@ -174,12 +174,12 @@ export class WalletAccount {
       data: transaction.data || '0x'
     });
     
-    return Buffer.from(keccak256(txData), 'hex');
+    return Buffer.from(sha3.keccak256(txData), 'hex');
   }
 
   private signHash(hash: Buffer): Uint8Array {
     const privateKeyBuffer = hexToBuffer(this.privateKey);
-    const signature = ecdsaSign(hash, privateKeyBuffer);
+    const signature = secp256k1.ecdsaSign(hash, privateKeyBuffer);
     
     // Add recovery ID for Ethereum compatibility
     const recoveryId = signature.recid;

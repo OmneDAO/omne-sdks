@@ -3,7 +3,7 @@
  */
 
 import { randomBytes, createCipheriv, createDecipheriv, pbkdf2Sync, scryptSync } from 'crypto';
-import { keccak256 } from 'js-sha3';
+import * as sha3 from 'js-sha3';
 
 export interface SecureKeyDerivationOptions {
   algorithm?: 'pbkdf2' | 'scrypt';
@@ -82,9 +82,9 @@ export function secureEncrypt(
     cipher.final()
   ]);
 
-  // Generate MAC for authentication
-  const macKey = keccak256(Buffer.concat([derivedKey, Buffer.from('mac')]));
-  const mac = keccak256(Buffer.concat([encrypted, iv, salt, Buffer.from(macKey, 'hex')]));
+    // Generate MAC key and verify integrity
+  const macKey = sha3.keccak256(Buffer.concat([derivedKey, Buffer.from('mac')]));
+  const mac = sha3.keccak256(Buffer.concat([encrypted, iv, salt, Buffer.from(macKey, 'hex')]));
 
   // Zero out sensitive data
   derivedKey.fill(0);
@@ -136,8 +136,8 @@ export function secureDecrypt(
   const derivedKey = deriveKey(password, saltBuffer, options);
 
   // Verify MAC
-  const macKey = keccak256(Buffer.concat([derivedKey, Buffer.from('mac')]));
-  const expectedMac = keccak256(Buffer.concat([encryptedBuffer, ivBuffer, saltBuffer, Buffer.from(macKey, 'hex')]));
+  const macKey = sha3.keccak256(Buffer.concat([derivedKey, Buffer.from('mac')]));
+  const expectedMac = sha3.keccak256(Buffer.concat([encryptedBuffer, ivBuffer, saltBuffer, Buffer.from(macKey, 'hex')]));
 
   if (mac !== expectedMac) {
     // Zero out key before throwing
