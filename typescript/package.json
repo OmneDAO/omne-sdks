@@ -58,6 +58,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@rollup/plugin-json": "^6.1.0",
     "@types/big.js": "^6.2.2",
     "@types/hdkey": "^2.1.0",
     "@types/jest": "^29.5.12",
