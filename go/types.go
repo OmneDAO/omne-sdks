@@ -350,3 +350,78 @@ func EstimateGas(transactionType string, hasData bool) uint64 {
 
 	return gas
 }
+
+// === Dynamic Stake and Fee Estimation - BREAKTHROUGH OPTIMIZATION ===
+
+// DynamicStakeInfo represents dynamic stake requirements based on network conditions
+type DynamicStakeInfo struct {
+	CurrentRequirement     string  `json:"currentRequirement"`     // Current dynamic stake requirement in OGT
+	MinimumStake           string  `json:"minimumStake"`           // Absolute minimum stake in OGT
+	MaximumStake           string  `json:"maximumStake"`           // Absolute maximum stake in OGT
+	NetworkUtilization     float64 `json:"networkUtilization"`     // Current network utilization (0-1)
+	ActiveValidators       uint32  `json:"activeValidators"`       // Number of active validators
+	UtilizationFactor      float64 `json:"utilizationFactor"`      // Applied utilization multiplier
+	ValidatorDensityFactor float64 `json:"validatorDensityFactor"` // Applied validator density multiplier
+	LastUpdated            uint64  `json:"lastUpdated"`            // Block height of last calculation
+}
+
+// FeeBreakdown represents detailed fee components
+type FeeBreakdown struct {
+	Execution            string `json:"execution"`            // Execution cost in quar
+	Storage              string `json:"storage"`              // Storage cost in quar
+	NetworkFee           string `json:"networkFee"`           // Network maintenance fee in quar
+	ComputationalRevenue string `json:"computationalRevenue"` // Revenue generation component in quar
+}
+
+// FeeEstimation represents comprehensive fee estimation for transactions
+type FeeEstimation struct {
+	BaseFee                   string       `json:"baseFee"`                   // Base transaction fee in quar
+	CrossSubsidyAmount        string       `json:"crossSubsidyAmount"`        // Cross-subsidization discount in quar
+	FinalFee                  string       `json:"finalFee"`                  // Final fee after subsidization in quar
+	SubsidyRate               float64      `json:"subsidyRate"`               // Applied subsidy rate (0.25-0.30)
+	NetworkUtilization        float64      `json:"networkUtilization"`        // Current network utilization
+	EstimatedConfirmationTime uint64       `json:"estimatedConfirmationTime"` // Estimated confirmation time in ms
+	FeeBreakdown              FeeBreakdown `json:"feeBreakdown"`              // Detailed fee breakdown
+}
+
+// ValidatorPerformance represents validator performance metrics for bonus calculations
+type ValidatorPerformance struct {
+	Address           string  `json:"address"`           // Validator address
+	Uptime            float64 `json:"uptime"`            // Uptime percentage (0-100)
+	BlockAccuracy     float64 `json:"blockAccuracy"`     // Block production accuracy (0-100)
+	JobCompletionRate float64 `json:"jobCompletionRate"` // Computational job completion rate (0-100)
+	AvgResponseTime   uint64  `json:"avgResponseTime"`   // Average response time in milliseconds
+	RevenueGenerated  string  `json:"revenueGenerated"`  // Total revenue generated in quar
+	PerformanceBonus  string  `json:"performanceBonus"`  // Current performance bonus in quar
+	LongevityBonus    string  `json:"longevityBonus"`    // Current longevity bonus in quar
+	TotalReward       string  `json:"totalReward"`       // Total reward including bonuses in quar
+	RegistrationBlock uint64  `json:"registrationBlock"` // Block height when validator registered
+}
+
+// ValidatorRewards represents validator rewards calculation result
+type ValidatorRewards struct {
+	BaseReward       string  `json:"baseReward"`       // Base validator reward
+	PerformanceBonus string  `json:"performanceBonus"` // Performance bonus amount
+	LongevityBonus   string  `json:"longevityBonus"`   // Longevity bonus amount
+	TotalReward      string  `json:"totalReward"`      // Total reward with bonuses
+	BonusPercentage  float64 `json:"bonusPercentage"`  // Total bonus as percentage
+}
+
+// NetworkMetrics represents network utilization metrics for dynamic calculations
+type NetworkMetrics struct {
+	Utilization          float64 `json:"utilization"`          // Network utilization (0-1)
+	ActiveValidators     uint32  `json:"activeValidators"`     // Number of active validators
+	AverageStake         string  `json:"averageStake"`         // Average validator stake
+	TotalStaked          string  `json:"totalStaked"`          // Total amount staked
+	NetworkHealth        float64 `json:"networkHealth"`        // Network health score (0-100)
+	CrossSubsidyRate     float64 `json:"crossSubsidyRate"`     // Current cross-subsidy rate
+	ComputationalRevenue string  `json:"computationalRevenue"` // Total computational revenue
+}
+
+// OptimalStakeEstimate represents optimal stake estimation result
+type OptimalStakeEstimate struct {
+	RecommendedStake string            `json:"recommendedStake"` // Recommended stake amount
+	MinimumRequired  string            `json:"minimumRequired"`  // Minimum required stake
+	ExpectedReturns  map[string]string `json:"expectedReturns"`  // Expected returns (monthly, annual)
+	RiskFactors      []string          `json:"riskFactors"`      // Risk factors to consider
+}

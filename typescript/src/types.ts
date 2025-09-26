@@ -148,10 +148,60 @@ export interface ORC20Token {
  * Token balance information
  */
 export interface TokenBalance {
-  tokenAddress: string;
-  balance: string;          // Balance in token units
-  symbol: string;
+  address: string;
+  token: string;
+  balance: string;
   decimals: number;
+}
+
+// === Dynamic Stake and Fee Estimation Types - BREAKTHROUGH OPTIMIZATION ===
+
+/**
+ * Dynamic stake requirements based on network conditions
+ */
+export interface DynamicStakeInfo {
+  currentRequirement: string;  // Current dynamic stake requirement in OGT
+  minimumStake: string;        // Absolute minimum stake in OGT
+  maximumStake: string;        // Absolute maximum stake in OGT
+  networkUtilization: number;  // Current network utilization (0-1)
+  activeValidators: number;    // Number of active validators
+  utilizationFactor: number;   // Applied utilization multiplier
+  validatorDensityFactor: number; // Applied validator density multiplier
+  lastUpdated: number;         // Block height of last calculation
+}
+
+/**
+ * Comprehensive fee estimation for transactions
+ */
+export interface FeeEstimation {
+  baseFee: string;            // Base transaction fee in quar
+  crossSubsidyAmount: string; // Cross-subsidization discount in quar
+  finalFee: string;          // Final fee after subsidization in quar
+  subsidyRate: number;       // Applied subsidy rate (0.25-0.30)
+  networkUtilization: number; // Current network utilization
+  estimatedConfirmationTime: number; // Estimated confirmation time in ms
+  feeBreakdown: {
+    execution: string;        // Execution cost in quar
+    storage: string;         // Storage cost in quar
+    networkFee: string;      // Network maintenance fee in quar
+    computationalRevenue: string; // Revenue generation component in quar
+  };
+}
+
+/**
+ * Validator performance metrics for bonus calculations
+ */
+export interface ValidatorPerformance {
+  address: string;
+  uptime: number;             // Uptime percentage (0-100)
+  blockAccuracy: number;      // Block production accuracy (0-100)
+  jobCompletionRate: number;  // Computational job completion rate (0-100)
+  avgResponseTime: number;    // Average response time in milliseconds
+  revenueGenerated: string;   // Total revenue generated in quar
+  performanceBonus: string;   // Current performance bonus in quar
+  longevityBonus: string;     // Current longevity bonus in quar
+  totalReward: string;        // Total reward including bonuses in quar
+  registrationBlock: number;  // Block height when validator registered
 }
 
 // === Computational Services Types ===
