@@ -395,6 +395,82 @@ func (c *Client) validateTransaction(tx *Transaction) error {
 	return nil
 }
 
+// === Dynamic Stake and Fee Estimation - BREAKTHROUGH OPTIMIZATION ===
+
+// GetDynamicStakeInfo retrieves current dynamic stake requirements based on network conditions
+func (c *Client) GetDynamicStakeInfo(ctx context.Context) (*DynamicStakeInfo, error) {
+	var result DynamicStakeInfo
+	err := c.Call(ctx, "omne_getDynamicStakeInfo", nil, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get dynamic stake info: %w", err)
+	}
+	return &result, nil
+}
+
+// EstimateFees estimates transaction fees with intelligent cross-subsidization
+func (c *Client) EstimateFees(ctx context.Context, tx *Transaction) (*FeeEstimation, error) {
+	var result FeeEstimation
+	err := c.Call(ctx, "omne_estimateFees", []interface{}{tx}, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate fees: %w", err)
+	}
+	return &result, nil
+}
+
+// GetValidatorPerformance retrieves validator performance metrics for bonus calculations
+func (c *Client) GetValidatorPerformance(ctx context.Context, validatorAddress string) (*ValidatorPerformance, error) {
+	if !IsValidAddress(validatorAddress) {
+		return nil, fmt.Errorf("invalid validator address: %s", validatorAddress)
+	}
+
+	var result ValidatorPerformance
+	err := c.Call(ctx, "omne_getValidatorPerformance", []interface{}{validatorAddress}, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get validator performance: %w", err)
+	}
+	return &result, nil
+}
+
+// CalculateValidatorRewards calculates potential validator rewards including performance and longevity bonuses
+func (c *Client) CalculateValidatorRewards(ctx context.Context, validatorAddress string, baseReward *string) (*ValidatorRewards, error) {
+	params := []interface{}{validatorAddress}
+	if baseReward != nil {
+		params = append(params, *baseReward)
+	}
+
+	var result ValidatorRewards
+	err := c.Call(ctx, "omne_calculateValidatorRewards", params, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to calculate validator rewards: %w", err)
+	}
+	return &result, nil
+}
+
+// GetNetworkMetrics retrieves network utilization metrics for dynamic calculations
+func (c *Client) GetNetworkMetrics(ctx context.Context) (*NetworkMetrics, error) {
+	var result NetworkMetrics
+	err := c.Call(ctx, "omne_getNetworkMetrics", nil, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get network metrics: %w", err)
+	}
+	return &result, nil
+}
+
+// EstimateOptimalStake estimates optimal stake amount for validator registration
+func (c *Client) EstimateOptimalStake(ctx context.Context, targetPerformance *float64) (*OptimalStakeEstimate, error) {
+	var params []interface{}
+	if targetPerformance != nil {
+		params = []interface{}{*targetPerformance}
+	}
+
+	var result OptimalStakeEstimate
+	err := c.Call(ctx, "omne_estimateOptimalStake", params, &result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate optimal stake: %w", err)
+	}
+	return &result, nil
+}
+
 // Close closes the client and any open connections
 func (c *Client) Close() error {
 	c.wsConnMu.Lock()

@@ -196,3 +196,78 @@ TxHash = str
 BlockHash = str
 QuarAmount = int
 OMCAmount = Decimal
+
+
+# === Dynamic Stake and Fee Estimation - BREAKTHROUGH OPTIMIZATION ===
+
+class DynamicStakeInfo(BaseModel):
+    """Dynamic stake requirements based on network conditions"""
+    current_requirement: str = Field(alias="currentRequirement")  # Current dynamic stake requirement in OGT
+    minimum_stake: str = Field(alias="minimumStake")              # Absolute minimum stake in OGT
+    maximum_stake: str = Field(alias="maximumStake")              # Absolute maximum stake in OGT  
+    network_utilization: float = Field(alias="networkUtilization") # Current network utilization (0-1)
+    active_validators: int = Field(alias="activeValidators")       # Number of active validators
+    utilization_factor: float = Field(alias="utilizationFactor")  # Applied utilization multiplier
+    validator_density_factor: float = Field(alias="validatorDensityFactor") # Applied validator density multiplier
+    last_updated: int = Field(alias="lastUpdated")                # Block height of last calculation
+
+
+class FeeBreakdown(BaseModel):
+    """Fee breakdown components"""
+    execution: str          # Execution cost in quar
+    storage: str           # Storage cost in quar
+    network_fee: str = Field(alias="networkFee")        # Network maintenance fee in quar
+    computational_revenue: str = Field(alias="computationalRevenue") # Revenue generation component in quar
+
+
+class FeeEstimation(BaseModel):
+    """Comprehensive fee estimation for transactions"""
+    base_fee: str = Field(alias="baseFee")              # Base transaction fee in quar
+    cross_subsidy_amount: str = Field(alias="crossSubsidyAmount") # Cross-subsidization discount in quar
+    final_fee: str = Field(alias="finalFee")            # Final fee after subsidization in quar
+    subsidy_rate: float = Field(alias="subsidyRate")    # Applied subsidy rate (0.25-0.30)
+    network_utilization: float = Field(alias="networkUtilization") # Current network utilization
+    estimated_confirmation_time: int = Field(alias="estimatedConfirmationTime") # Estimated confirmation time in ms
+    fee_breakdown: FeeBreakdown = Field(alias="feeBreakdown")       # Detailed fee breakdown
+
+
+class ValidatorPerformance(BaseModel):
+    """Validator performance metrics for bonus calculations"""
+    address: str                                        # Validator address
+    uptime: float                                      # Uptime percentage (0-100)
+    block_accuracy: float = Field(alias="blockAccuracy")           # Block production accuracy (0-100)
+    job_completion_rate: float = Field(alias="jobCompletionRate")  # Computational job completion rate (0-100)
+    avg_response_time: int = Field(alias="avgResponseTime")        # Average response time in milliseconds
+    revenue_generated: str = Field(alias="revenueGenerated")       # Total revenue generated in quar
+    performance_bonus: str = Field(alias="performanceBonus")       # Current performance bonus in quar
+    longevity_bonus: str = Field(alias="longevityBonus")           # Current longevity bonus in quar
+    total_reward: str = Field(alias="totalReward")                 # Total reward including bonuses in quar
+    registration_block: int = Field(alias="registrationBlock")     # Block height when validator registered
+
+
+class ValidatorRewards(BaseModel):
+    """Validator rewards calculation result"""
+    base_reward: str = Field(alias="baseReward")                   # Base validator reward
+    performance_bonus: str = Field(alias="performanceBonus")       # Performance bonus amount
+    longevity_bonus: str = Field(alias="longevityBonus")           # Longevity bonus amount
+    total_reward: str = Field(alias="totalReward")                 # Total reward with bonuses
+    bonus_percentage: float = Field(alias="bonusPercentage")       # Total bonus as percentage
+
+
+class NetworkMetrics(BaseModel):
+    """Network utilization metrics for dynamic calculations"""
+    utilization: float                                  # Network utilization (0-1)
+    active_validators: int = Field(alias="activeValidators")       # Number of active validators
+    average_stake: str = Field(alias="averageStake")              # Average validator stake
+    total_staked: str = Field(alias="totalStaked")                # Total amount staked
+    network_health: float = Field(alias="networkHealth")          # Network health score (0-100)
+    cross_subsidy_rate: float = Field(alias="crossSubsidyRate")   # Current cross-subsidy rate
+    computational_revenue: str = Field(alias="computationalRevenue") # Total computational revenue
+
+
+class OptimalStakeEstimate(BaseModel):
+    """Optimal stake estimation result"""
+    recommended_stake: str = Field(alias="recommendedStake")       # Recommended stake amount
+    minimum_required: str = Field(alias="minimumRequired")         # Minimum required stake
+    expected_returns: Dict[str, str] = Field(alias="expectedReturns") # Expected returns (monthly, annual)
+    risk_factors: List[str] = Field(alias="riskFactors")          # Risk factors to consider

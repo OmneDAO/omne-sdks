@@ -12,7 +12,9 @@ import websockets
 from .types import (
     NetworkInfo, Balance, Transaction, TransactionReceipt, Block,
     ORC20Token, ORC20TokenConfig, ComputationalJob, ComputationalJobRequest,
-    JobStatus, NodeInfo, NetworkType, TransactionStatus
+    JobStatus, NodeInfo, NetworkType, TransactionStatus,
+    DynamicStakeInfo, FeeEstimation, ValidatorPerformance, ValidatorRewards,
+    NetworkMetrics, OptimalStakeEstimate
 )
 from .wallet import Wallet, Account
 from .utils import to_quar, from_quar, parse_address, is_valid_address
@@ -536,3 +538,45 @@ class OmneClient:
     def is_valid_address(self, address: str) -> bool:
         """Check if address is valid"""
         return is_valid_address(address)
+
+    # ===== Dynamic Stake and Fee Estimation - BREAKTHROUGH OPTIMIZATION =====
+    
+    async def get_dynamic_stake_info(self) -> "DynamicStakeInfo":
+        """Get current dynamic stake requirements based on network conditions"""
+        from .types import DynamicStakeInfo
+        result = await self._make_request("omne_getDynamicStakeInfo")
+        return DynamicStakeInfo(**result)
+    
+    async def estimate_fees(self, transaction: Dict[str, Any]) -> "FeeEstimation":
+        """Estimate transaction fees with intelligent cross-subsidization"""
+        from .types import FeeEstimation
+        result = await self._make_request("omne_estimateFees", [transaction])
+        return FeeEstimation(**result)
+    
+    async def get_validator_performance(self, validator_address: str) -> "ValidatorPerformance":
+        """Get validator performance metrics for bonus calculations"""
+        from .types import ValidatorPerformance
+        if not is_valid_address(validator_address):
+            raise ValidationError(f"Invalid validator address: {validator_address}")
+        result = await self._make_request("omne_getValidatorPerformance", [validator_address])
+        return ValidatorPerformance(**result)
+    
+    async def calculate_validator_rewards(self, validator_address: str, base_reward: Optional[str] = None) -> "ValidatorRewards":
+        """Calculate potential validator rewards including performance and longevity bonuses"""
+        from .types import ValidatorRewards
+        params = [validator_address, base_reward] if base_reward else [validator_address]
+        result = await self._make_request("omne_calculateValidatorRewards", params)
+        return ValidatorRewards(**result)
+    
+    async def get_network_metrics(self) -> "NetworkMetrics":
+        """Get network utilization metrics for dynamic calculations"""
+        from .types import NetworkMetrics
+        result = await self._make_request("omne_getNetworkMetrics")
+        return NetworkMetrics(**result)
+    
+    async def estimate_optimal_stake(self, target_performance: Optional[float] = None) -> "OptimalStakeEstimate":
+        """Estimate optimal stake amount for validator registration"""
+        from .types import OptimalStakeEstimate
+        params = [target_performance] if target_performance is not None else []
+        result = await self._make_request("omne_estimateOptimalStake", params)
+        return OptimalStakeEstimate(**result)

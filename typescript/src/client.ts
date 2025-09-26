@@ -23,7 +23,10 @@ import {
   EventType,
   EventCallback,
   Subscription,
-  TransactionPriority
+  TransactionPriority,
+  DynamicStakeInfo,
+  FeeEstimation,
+  ValidatorPerformance
 } from './types';
 import { 
   NetworkError, 
@@ -580,6 +583,77 @@ export class OmneClient {
       }
       throw NetworkError.connectionFailed(this.config.url, error as Error);
     }
+  }
+
+  // === Dynamic Stake and Fee Estimation - BREAKTHROUGH OPTIMIZATION ===
+
+  /**
+   * Get current dynamic stake requirements based on network conditions
+   */
+  async getDynamicStakeInfo(): Promise<DynamicStakeInfo> {
+    return this.request('omne_getDynamicStakeInfo', []);
+  }
+
+  /**
+   * Estimate transaction fees with intelligent cross-subsidization
+   */
+  async estimateFees(transaction: Partial<Transaction>): Promise<FeeEstimation> {
+    return this.request('omne_estimateFees', [transaction]);
+  }
+
+  /**
+   * Get validator performance metrics for bonus calculations
+   */
+  async getValidatorPerformance(validatorAddress: string): Promise<ValidatorPerformance> {
+    if (!isValidAddress(validatorAddress)) {
+      throw ValidationError.invalidField('validatorAddress', validatorAddress);
+    }
+    return this.request('omne_getValidatorPerformance', [validatorAddress]);
+  }
+
+  /**
+   * Calculate potential validator rewards including performance and longevity bonuses
+   */
+  async calculateValidatorRewards(validatorAddress: string, baseReward?: string): Promise<{
+    baseReward: string;
+    performanceBonus: string;
+    longevityBonus: string;
+    totalReward: string;
+    bonusPercentage: number;
+  }> {
+    const params = baseReward ? [validatorAddress, baseReward] : [validatorAddress];
+    return this.request('omne_calculateValidatorRewards', params);
+  }
+
+  /**
+   * Get network utilization metrics for dynamic calculations
+   */
+  async getNetworkMetrics(): Promise<{
+    utilization: number;
+    activeValidators: number;
+    averageStake: string;
+    totalStaked: string;
+    networkHealth: number;
+    crossSubsidyRate: number;
+    computationalRevenue: string;
+  }> {
+    return this.request('omne_getNetworkMetrics', []);
+  }
+
+  /**
+   * Estimate optimal stake amount for validator registration
+   */
+  async estimateOptimalStake(targetPerformance?: number): Promise<{
+    recommendedStake: string;
+    minimumRequired: string;
+    expectedReturns: {
+      monthly: string;
+      annual: string;
+    };
+    riskFactors: string[];
+  }> {
+    const params = targetPerformance ? [targetPerformance] : [];
+    return this.request('omne_estimateOptimalStake', params);
   }
 }
 
