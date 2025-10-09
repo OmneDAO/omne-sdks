@@ -6,7 +6,7 @@ const json = require('@rollup/plugin-json');
 const pkg = require('./package.json');
 
 module.exports = [
-  // CommonJS build
+  // CommonJS build (Node.js)
   {
     input: 'src/index.ts',
     output: {
@@ -27,9 +27,9 @@ module.exports = [
       }),
       commonjs(),
     ],
-    external: ['crypto', 'fs', 'path', 'os']
+    external: ['crypto', 'fs', 'path', 'os', 'ws']
   },
-  // ESM build
+  // ESM build (Browser-compatible)
   {
     input: 'src/index.ts',
     output: {
@@ -40,7 +40,8 @@ module.exports = [
     plugins: [
       json(),
       resolve({
-        preferBuiltins: true
+        preferBuiltins: false, // Don't prefer Node.js built-ins for browser
+        browser: true, // Use browser versions of packages
       }),
       commonjs(),
       typescript({
@@ -53,6 +54,10 @@ module.exports = [
         useTsconfigDeclarationDir: true
       })
     ],
-    external: ['crypto', 'fs', 'path', 'os']
+    // External more Node.js specific modules for browser build
+    external: [
+      'crypto', 'fs', 'path', 'os', 'ws', 
+      'assert', 'stream', 'http', 'https', 'url', 'zlib', 'buffer', 'util', 'punycode', 'events'
+    ]
   }
 ];

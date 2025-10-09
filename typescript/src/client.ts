@@ -5,7 +5,6 @@
  * Supports JSON-RPC over WebSocket and HTTP with comprehensive error handling.
  */
 
-import WebSocket from 'ws';
 import fetch from 'cross-fetch';
 import { 
   NetworkInfo, 
@@ -53,7 +52,7 @@ import {
  */
 export class OmneClient {
   private config: Required<ClientConfig>;
-  private ws?: WebSocket;
+  private ws?: any; // Universal WebSocket type
   private isConnected: boolean = false;
   private secureRequestManager: SecureRequestManager;
   private rateLimiter: RateLimiter;
@@ -418,28 +417,60 @@ export class OmneClient {
 
   private async connectWebSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.config.url);
+      // Use browser WebSocket or Node.js WebSocket based on environment
+      let WebSocketClass: any;
       
-      this.ws.on('open', () => {
+      if (typeof window !== 'undefined' && window.WebSocket) {
+        // Browser environment
+        WebSocketClass = window.WebSocket;
+      } else {
+        // Node.js environment
+        try {
+          WebSocketClass = require('ws');
+        } catch (error) {
+          throw new NetworkError('WebSocket not available in this environment');
+        }
+      }
+      
+      this.ws = new WebSocketClass(this.config.url);
+      
+      // Handle both browser and Node.js WebSocket APIs
+      const onOpen = () => {
         this.isConnected = true;
         this.reconnectAttempts = 0;
         resolve();
-      });
+      };
 
-      this.ws.on('error', (error) => {
+      const onError = (event: any) => {
         if (!this.isConnected) {
-          reject(NetworkError.connectionFailed(this.config.url, error));
+          reject(NetworkError.connectionFailed(this.config.url, event.error || new Error('WebSocket connection failed')));
         }
-      });
+      };
 
-      this.ws.on('close', () => {
+      const onClose = () => {
         this.isConnected = false;
         this.handleReconnect();
-      });
+      };
 
-      this.ws.on('message', (data) => {
-        this.handleMessage(data.toString());
-      });
+      const onMessage = (event: any) => {
+        const data = event.data || event; // Handle both browser and Node.js formats
+        this.handleMessage(typeof data === 'string' ? data : data.toString());
+      };
+      
+      // Attach listeners based on environment
+      if (typeof window !== 'undefined' && window.WebSocket) {
+        // Browser API
+        this.ws.onopen = onOpen;
+        this.ws.onerror = onError;
+        this.ws.onclose = onClose;
+        this.ws.onmessage = onMessage;
+      } else {
+        // Node.js API
+        this.ws.on('open', onOpen);
+        this.ws.on('error', onError);
+        this.ws.on('close', onClose);
+        this.ws.on('message', onMessage);
+      }
     });
   }
 
