@@ -85,3 +85,10 @@ python_version = "3.8"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
+markers = [
+    "integration: integration scenarios that exercise external services",
+    "performance: performance-focused checks that may run longer than unit tests",
+]

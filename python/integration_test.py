@@ -6,8 +6,11 @@ to validate real integration scenarios.
 """
 
 import asyncio
+import os
 import sys
 from decimal import Decimal
+
+import pytest
 
 # Test if we can import the full client
 try:
@@ -21,9 +24,8 @@ except ImportError:
     Wallet = None
 
 
-async def test_with_running_node():
-    """Test SDK integration with running Omne node"""
-    
+async def _run_with_running_node() -> bool:
+    """Execute integration flow; returns True when all checks pass."""
     print("🔗 Testing SDK Integration with Omne Node")
     print("=" * 50)
     
@@ -34,7 +36,9 @@ async def test_with_running_node():
         return False
     
     # Test basic connection
-    client = OmneClient("http://localhost:8545")
+    rpc_url = os.environ.get("OMNE_SDK_RPC_URL", "http://localhost:8545")
+    print(f"Connecting to Omne node at {rpc_url}")
+    client = OmneClient(rpc_url)
     
     try:
         print("\n📡 Testing Network Connection...")
@@ -89,9 +93,8 @@ async def test_with_running_node():
         await client.close()
 
 
-def test_basic_functionality():
-    """Test basic SDK functionality without node"""
-    
+def _run_basic_functionality() -> bool:
+    """Run local functionality checks; returns True when all assertions pass."""
     print("🧮 Testing Basic SDK Functionality")
     print("=" * 40)
     
@@ -137,6 +140,19 @@ def test_basic_functionality():
     return True
 
 
+@pytest.mark.asyncio
+@pytest.mark.skipif(not has_full_sdk or OmneClient is None, reason="Full SDK not available (missing dependencies)")
+async def test_with_running_node(omne_docker_node):
+    """Pytest entrypoint that exercises integration flow."""
+    _ = omne_docker_node  # Ensures fixture activation for clarity
+    assert await _run_with_running_node()
+
+
+def test_basic_functionality():
+    """Pytest entrypoint that validates basic conversions."""
+    assert _run_basic_functionality()
+
+
 async def main():
     """Main test runner"""
     
@@ -144,10 +160,10 @@ async def main():
     print("=" * 45)
     
     # Test basic functionality (always works)
-    basic_success = test_basic_functionality()
+    basic_success = _run_basic_functionality()
     
     # Test with running node (requires node + dependencies)
-    integration_success = await test_with_running_node()
+    integration_success = await _run_with_running_node()
     
     print("\n📊 Test Summary:")
     print(f"  Basic Functionality: {'✅ PASS' if basic_success else '❌ FAIL'}")

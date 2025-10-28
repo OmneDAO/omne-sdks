@@ -9,6 +9,32 @@ from decimal import Decimal
 import aiohttp
 import websockets
 
+
+def _coerce_int(value: Union[str, int, float, None]) -> Optional[int]:
+    """Best-effort conversion of RPC numeric fields."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        lower = stripped.lower()
+        if lower in {"latest", "pending", "earliest"}:
+            return None
+        if stripped.startswith(("0x", "0X")):
+            return int(stripped, 16)
+        try:
+            return int(stripped, 10)
+        except ValueError:
+            return None
+    return None
+
 from .types import (
     NetworkInfo, Balance, Transaction, TransactionReceipt, Block,
     ORC20Token, ORC20TokenConfig, ComputationalJob, ComputationalJobRequest,
@@ -68,7 +94,7 @@ class OmneClient:
         self._session: Optional[aiohttp.ClientSession] = None
         self._ws_connection: Optional[websockets.WebSocketServerProtocol] = None
         self._id_generator = SecureRequestIDGenerator()
-        
+    
     async def __aenter__(self):
         """Async context manager entry"""
         await self._ensure_session()
@@ -155,11 +181,19 @@ class OmneClient:
     
     async def get_chain_id(self) -> int:
         """Get chain ID"""
-        return await self._make_request("omne_chainId")
+        result = await self._make_request("omne_chainId")
+        parsed = _coerce_int(result)
+        if parsed is None:
+            raise NetworkError(f"Unexpected chain ID payload: {result}")
+        return parsed
     
     async def get_block_number(self) -> int:
         """Get latest block number"""
-        return await self._make_request("omne_blockNumber")
+        result = await self._make_request("omne_blockNumber")
+        parsed = _coerce_int(result)
+        if parsed is None:
+            raise NetworkError(f"Unexpected block number payload: {result}")
+        return parsed
     
     # ===== Account Management =====
     
@@ -176,7 +210,9 @@ class OmneClient:
         address = parse_address(address)
         result = await self._make_request("omne_getBalance", [address])
         
-        quar_balance = int(result["balance"])
+        quar_balance = _coerce_int(result.get("balance"))
+        if quar_balance is None:
+            raise NetworkError(f"Unexpected balance payload: {result}")
         return Balance(
             address=address,
             omc=from_quar(quar_balance),
@@ -342,7 +378,17 @@ class OmneClient:
     async def get_gas_price(self) -> int:
         """Get current gas price in quar"""
         result = await self._make_request("omne_gasPrice")
-        return int(result, 16)
+        if isinstance(result, dict):
+            for key in ("gasPriceQuar", "gasPrice", "gasPriceBase"):
+                parsed = _coerce_int(result.get(key))
+                if parsed is not None:
+                    return parsed
+            raise NetworkError(f"Unexpected gas price payload: {result}")
+
+        parsed = _coerce_int(result)
+        if parsed is None:
+            raise NetworkError(f"Unexpected gas price payload: {result}")
+        return parsed
     
     # ===== Block Information =====
     
@@ -352,14 +398,24 @@ class OmneClient:
             block_number = hex(block_number)
         
         result = await self._make_request("omne_getBlockByNumber", [block_number, False])
-        
+
+        number_field = result.get("number")
+        resolved_number = _coerce_int(number_field)
+        if resolved_number is None:
+            # Fallback to latest block height when RPC returns symbolic labels like "latest"
+            resolved_number = await self.get_block_number()
+
+        timestamp = _coerce_int(result.get("timestamp")) or 0
+        gas_limit = _coerce_int(result.get("gasLimit")) or 0
+        gas_used = _coerce_int(result.get("gasUsed")) or 0
+
         return Block(
-            number=int(result["number"], 16),
-            hash=result["hash"],
-            parent_hash=result["parentHash"],
-            timestamp=int(result["timestamp"], 16),
-            gas_limit=int(result["gasLimit"], 16),
-            gas_used=int(result["gasUsed"], 16),
+            number=resolved_number,
+            hash=result.get("hash", ""),
+            parent_hash=result.get("parentHash", ""),
+            timestamp=timestamp,
+            gas_limit=gas_limit,
+            gas_used=gas_used,
             transaction_count=len(result.get("transactions", [])),
             transactions=result.get("transactions", []),
             layer=result.get("layer", "commerce")
@@ -406,7 +462,7 @@ class OmneClient:
             "decimals": decimals,
             "description": description,
             "applicationType": application_type,
-            "config": config.dict()
+            "config": config.model_dump()
         }
         
         if from_address:
@@ -460,7 +516,7 @@ class OmneClient:
         Returns:
             Job information
         """
-        params = job_request.dict()
+        params = job_request.model_dump()
         if from_address:
             params["from"] = parse_address(from_address)
         

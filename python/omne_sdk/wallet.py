@@ -186,12 +186,13 @@ class Wallet:
         if index in self._accounts:
             return self._accounts[index]
         
-        # Use secure key derivation with proper PBKDF2 parameters
-        # Generate a unique salt for each account using secure random + index
-        import secrets
-        base_salt = secrets.token_bytes(16)  # 16 bytes of secure random data
+        # Use secure and deterministic key derivation so the same mnemonic
+        # reproduces identical accounts across sessions while keeping salts unique.
+        import hashlib
+
         index_bytes = index.to_bytes(4, byteorder='big')
-        account_salt = base_salt + index_bytes + b"omne_account_derivation"
+        salt_material = self._seed + index_bytes + b"omne_account_derivation"
+        account_salt = hashlib.sha256(salt_material).digest()
         
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
@@ -201,8 +202,8 @@ class Wallet:
             backend=default_backend()
         )
         
-        private_key_bytes = kdf.derive(self._seed)
-        account = Account(private_key_bytes)
+        private_key_bytes = bytearray(kdf.derive(self._seed))
+        account = Account(bytes(private_key_bytes))
         
         # Zero out sensitive data immediately
         for i in range(len(private_key_bytes)):
@@ -248,20 +249,20 @@ class Wallet:
             iterations=100000,  # Increased from 4096 to 100,000 iterations
             backend=default_backend()
         )
-        encryption_key = kdf.derive(password.encode('utf-8'))
-        
+        encryption_key = bytearray(kdf.derive(password.encode('utf-8')))
+
         # Use AES-256-GCM for authenticated encryption
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-        
+
         nonce = secrets.token_bytes(12)  # GCM nonce (96 bits)
-        aesgcm = AESGCM(encryption_key)
-        
+        aesgcm = AESGCM(bytes(encryption_key))
+
         # Get private key bytes
-        private_key_bytes = bytes.fromhex(account.private_key_hex[2:])
-        
+        private_key_bytes = bytearray(bytes.fromhex(account.private_key_hex[2:]))
+
         # Encrypt with authenticated encryption
         ciphertext = aesgcm.encrypt(nonce, private_key_bytes, None)
-        
+
         # Zero out sensitive data
         for i in range(len(encryption_key)):
             encryption_key[i] = 0
@@ -308,7 +309,7 @@ class Wallet:
             nonce = bytes.fromhex(keystore["nonce"])
             encrypted_key = bytes.fromhex(keystore["encrypted_key"])
             iterations = keystore.get("iterations", 100000)
-            
+
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
@@ -316,27 +317,27 @@ class Wallet:
                 iterations=iterations,
                 backend=default_backend()
             )
-            decryption_key = kdf.derive(password.encode('utf-8'))
-            
+            decryption_key = bytearray(kdf.derive(password.encode('utf-8')))
+
             from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-            aesgcm = AESGCM(decryption_key)
-            
+            aesgcm = AESGCM(bytes(decryption_key))
+
             try:
-                private_key_bytes = aesgcm.decrypt(nonce, encrypted_key, None)
+                private_key_bytes = bytearray(aesgcm.decrypt(nonce, encrypted_key, None))
             except Exception:
                 raise WalletError("Invalid password or corrupted keystore")
             finally:
                 # Zero out decryption key
                 for i in range(len(decryption_key)):
                     decryption_key[i] = 0
-                    
+
         else:
             # Legacy format (CBC mode) - maintain backward compatibility
             salt = bytes.fromhex(keystore["salt"])
             iv = bytes.fromhex(keystore.get("iv", keystore.get("nonce", "")))
             encrypted_key = bytes.fromhex(keystore["encrypted_key"])
             iterations = keystore.get("iterations", 4096)
-            
+
             kdf = PBKDF2HMAC(
                 algorithm=hashes.SHA256(),
                 length=32,
@@ -344,29 +345,29 @@ class Wallet:
                 iterations=iterations,
                 backend=default_backend()
             )
-            key = kdf.derive(password.encode())
-            
+            key = bytearray(kdf.derive(password.encode()))
+
             cipher = Cipher(
-                algorithms.AES(key),
+                algorithms.AES(bytes(key)),
                 modes.CBC(iv),
                 backend=default_backend()
             )
             decryptor = cipher.decryptor()
-            
+
             decrypted = decryptor.update(encrypted_key) + decryptor.finalize()
-            private_key_bytes = decrypted.rstrip(b'\x00')
-            
+            private_key_bytes = bytearray(decrypted.rstrip(b'\x00'))
+
             # Zero out key
             for i in range(len(key)):
                 key[i] = 0
         
         # Create account and zero out private key bytes
-        account = Account(private_key_bytes)
-        
+        account = Account(bytes(private_key_bytes))
+
         # Zero out private key bytes
         for i in range(len(private_key_bytes)):
             private_key_bytes[i] = 0
-            
+
         return account
     
     def sign_transaction(self, transaction: Transaction, account_index: int = 0) -> str:
