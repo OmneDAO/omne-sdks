@@ -120,11 +120,11 @@ def _validate_omne_address(address: str) -> str:
     
     # Try to decode to validate length
     try:
-        _omne_decode(encoded)
+        decoded = _omne_decode(encoded)
     except ValueError as e:
         raise ValueError(f"Invalid Omne address: {e}")
     
-    return address
+    return f"0x{decoded.hex()}"
 
 
 def _validate_hex_address(address: str) -> str:

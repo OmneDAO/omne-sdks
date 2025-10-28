@@ -188,6 +188,15 @@ pip install -e .[dev]
 # Run tests
 pytest
 
+### Integration Test Environment
+
+- The integration suite (`integration_test.py::test_with_running_node`) now spins up a short-lived validator via Docker Compose. The compose definition lives in `tests/docker/docker-compose.integration.yml` and builds the node image from the repository.
+- Requirements: Docker Desktop (or compatible Linux daemon) with the Compose plugin available as `docker compose`.
+- By default the session exposes the RPC endpoint on `http://127.0.0.1:18545` and the tests consume the value from `OMNE_SDK_RPC_URL`. Override the port/url via `OMNE_SDK_NODE_PORT` / `OMNE_SDK_RPC_URL` if you have local conflicts.
+- Set `OMNE_SDK_NODE_IMAGE` to point at a prebuilt validator image (for example one produced in CI). Pair this with `OMNE_SDK_SKIP_BUILD=1` to skip the cargo build step during `docker compose up`.
+- Set `OMNE_SDK_ENABLE_DOCKER=0` to skip container orchestration (the integration test will be automatically skipped in that mode).
+- When you only need the integration target, run `pytest integration_test.py::test_with_running_node -vv` to keep feedback focused.
+
 # Format code
 black omne_sdk tests
 isort omne_sdk tests

@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  validator:
+    image: ${OMNE_SDK_NODE_IMAGE:-omne_sdk_integration-validator}
+    build:
+      context: ../../../../
+      dockerfile: omne-blockchain/Dockerfile
+    entrypoint: ["/usr/local/bin/omne-node"]
+    command:
+      - validator
+      - start
+      - --network
+      - ${OMNE_DEVNET_NETWORK:-devnet}
+      - --data-dir
+      - /data
+      - --bind
+      - 0.0.0.0:8545
+      - --storage
+      - rocksdb
+    environment:
+      OMNE_LOG_LEVEL: ${OMNE_LOG_LEVEL:-warn}
+      OMP_FIXTURE_WASM: ${OMP_FIXTURE_WASM:-/artefacts/omp_media_protocol.wasm}
+    ports:
+      - "${OMNE_SDK_NODE_PORT:-18545}:8545"
+    volumes:
+      - ${OMNE_SDK_NODE_DATA_DIR:-./.validator/data}:/data
+      - ${OMNE_SDK_NODE_CONFIG_DIR:-./.validator/config}:/config
+      - ${OMNE_SDK_NODE_KEYS_DIR:-./.validator/keys}:/keys
+      - ${OMNE_SDK_NODE_LOG_DIR:-./.validator/logs}:/logs
+      - ../../../../omne-blockchain/docker/devnet/artefacts/omp_media_protocol.wasm:/artefacts/omp_media_protocol.wasm:ro
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

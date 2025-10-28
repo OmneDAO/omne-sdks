@@ -4,8 +4,22 @@ Secure client configuration for Omne Python SDK
 
 import ssl
 import aiohttp
+import re
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field
+
+
+_ENABLE_CLEANUP_THRESHOLD = (3, 9)
+
+
+def _should_enable_cleanup_closed() -> bool:
+    """Return True when aiohttp still supports enable_cleanup_closed."""
+    version_str = getattr(aiohttp, "__version__", "")
+    match = re.match(r"(\d+)\.(\d+)", version_str)
+    if not match:
+        return False
+    major, minor = int(match.group(1)), int(match.group(2))
+    return (major, minor) < _ENABLE_CLEANUP_THRESHOLD
 
 
 @dataclass
@@ -64,16 +78,24 @@ class SecurityConfig:
     def create_connector(self) -> aiohttp.TCPConnector:
         """Create secure TCP connector for aiohttp"""
         ssl_context = self.create_ssl_context()
-        
-        return aiohttp.TCPConnector(
-            ssl=ssl_context,
-            limit=self.max_connections,
-            limit_per_host=self.max_connections_per_host,
-            keepalive_timeout=self.keep_alive_timeout,
-            enable_cleanup_closed=True,
-            force_close=True,  # Force close connections for security
-            verify_ssl=self.verify_ssl
-        )
+
+        connector_kwargs = {
+            "ssl": ssl_context,
+            "limit": self.max_connections,
+            "limit_per_host": self.max_connections_per_host,
+            "force_close": True,  # Force close connections for security
+            "verify_ssl": self.verify_ssl,
+        }
+
+        if _should_enable_cleanup_closed():
+            connector_kwargs["enable_cleanup_closed"] = True
+
+        # aiohttp >= 3.13 forbids setting keepalive_timeout when force_close=True.
+        # Only propagate the configured timeout when persistent connections are allowed.
+        if not connector_kwargs["force_close"]:
+            connector_kwargs["keepalive_timeout"] = self.keep_alive_timeout
+
+        return aiohttp.TCPConnector(**connector_kwargs)
     
     def create_timeout(self) -> aiohttp.ClientTimeout:
         """Create timeout configuration"""
