@@ -19,6 +19,16 @@ Official TypeScript/JavaScript SDK for Omne Blockchain - the commerce-first bloc
 npm install @omne/sdk
 ```
 
+> **Node fetch requirement**
+>
+> The SDK relies on the global `fetch` API. Modern browsers and Node.js 18+ provide it natively. If you target Node.js 16 or 17, install a polyfill and the SDK will auto-detect it at runtime:
+>
+> ```bash
+> npm install node-fetch@^3.3.2
+> ```
+>
+> No extra configuration is required—`@omne/sdk` will import the polyfill when `globalThis.fetch` is unavailable.
+
 Or with yarn:
 
 ```bash

@@ -5,7 +5,6 @@
  * Supports JSON-RPC over WebSocket and HTTP with comprehensive error handling.
  */
 
-import fetch from 'cross-fetch';
 import { 
   NetworkInfo, 
   Balance, 
@@ -46,6 +45,55 @@ import {
   SecureRequestManager, 
   RateLimiter
 } from './secure-client';
+
+let cachedFetch: typeof fetch | null = null;
+let fetchPromise: Promise<typeof fetch> | null = null;
+
+async function resolveFetch(): Promise<typeof fetch> {
+  if (cachedFetch) {
+    return cachedFetch;
+  }
+
+  if (typeof globalThis.fetch === 'function') {
+    cachedFetch = globalThis.fetch.bind(globalThis);
+    return cachedFetch;
+  }
+
+  if (typeof process !== 'undefined' && process.release?.name === 'node') {
+    if (!fetchPromise) {
+      fetchPromise = (async () => {
+        try {
+          const mod: any = await import('node-fetch');
+          const candidate = mod?.default ?? mod;
+
+          if (typeof candidate !== 'function') {
+            throw new Error('node-fetch did not expose a fetch function');
+          }
+
+          const boundFetch = candidate.bind(globalThis) as typeof fetch;
+          cachedFetch = boundFetch;
+          return boundFetch;
+        } catch (error) {
+          cachedFetch = null;
+          fetchPromise = null;
+
+          throw new NetworkError(
+            'Global fetch is not available. Install node-fetch when running on Node.js < 18.',
+            undefined,
+            undefined,
+            {
+              originalError: error instanceof Error ? error.message : String(error)
+            }
+          );
+        }
+      })();
+    }
+
+    return fetchPromise!;
+  }
+
+  throw new NetworkError('Global fetch is not available. Provide a fetch polyfill when running outside browser environments.');
+}
 
 /**
  * Main Omne blockchain client
@@ -587,7 +635,8 @@ export class OmneClient {
 
   private async sendHttpRequest<T>(request: RPCRequest): Promise<T> {
     try {
-      const response = await fetch(this.config.url, {
+      const fetchFn = await resolveFetch();
+  const response = await fetchFn(this.config.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

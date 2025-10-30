@@ -27,7 +27,7 @@ module.exports = [
       }),
       commonjs(),
     ],
-    external: ['crypto', 'fs', 'path', 'os', 'ws']
+  external: ['crypto', 'fs', 'path', 'os', 'ws', 'node-fetch']
   },
   // ESM build (Browser-compatible)
   {
@@ -56,8 +56,9 @@ module.exports = [
     ],
     // External more Node.js specific modules for browser build
     external: [
-      'crypto', 'fs', 'path', 'os', 'ws', 
-      'assert', 'stream', 'http', 'https', 'url', 'zlib', 'buffer', 'util', 'punycode', 'events'
+  'crypto', 'fs', 'path', 'os', 'ws', 
+  'assert', 'stream', 'http', 'https', 'url', 'zlib', 'buffer', 'util', 'punycode', 'events',
+  'node-fetch'
     ]
   }
 ];

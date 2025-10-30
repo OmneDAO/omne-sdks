@@ -6,9 +6,10 @@
  */
 
 import * as bip39 from 'bip39';
-import HDKey from 'hdkey';
-import * as secp256k1 from 'secp256k1';
-import * as sha3 from 'js-sha3';
+import { HDKey } from '@scure/bip32';
+import { getPublicKey, sign } from '@noble/secp256k1';
+import { keccak_256 } from '@noble/hashes/sha3';
+import { utf8ToBytes } from '@noble/hashes/utils';
 import { 
   WalletConfig, 
   Keystore, 
@@ -52,9 +53,9 @@ export class WalletAccount {
     this.path = path;
 
     // Generate public key from private key
-    const privateKeyBuffer = hexToBuffer(privateKey);
-    const publicKeyBuffer = secp256k1.publicKeyCreate(privateKeyBuffer, false);
-    this.publicKey = bufferToHex(publicKeyBuffer);
+  const privateKeyBuffer = hexToBuffer(privateKey);
+  const publicKeyBuffer = getPublicKey(privateKeyBuffer, false);
+  this.publicKey = bufferToHex(publicKeyBuffer);
 
     // Generate address from public key
     this.address = this.generateAddress(publicKeyBuffer);
@@ -77,8 +78,11 @@ export class WalletAccount {
    * Sign arbitrary data
    */
   signMessage(message: string): string {
-    const messageHash = sha3.keccak256(message);
-    const signature = this.signHash(Buffer.from(messageHash, 'hex'));
+    const messageBytes = message.startsWith('0x')
+      ? hexToBuffer(message)
+      : utf8ToBytes(message);
+    const messageHash = keccak_256(messageBytes);
+    const signature = this.signHash(messageHash);
     return bufferToHex(signature);
   }
 
@@ -151,18 +155,18 @@ export class WalletAccount {
   private generateAddress(publicKey: Uint8Array): string {
     // Remove the first byte (0x04) for uncompressed public key
     const publicKeyWithoutPrefix = publicKey.slice(1);
-    
-    // Hash with Keccak-256
-    const hash = sha3.keccak256(publicKeyWithoutPrefix);
-    
-    // Take last 20 bytes
-    const addressBytes = new Uint8Array(Buffer.from(hash.slice(-40), 'hex'));
-    
+
+  // Hash with Keccak-256
+  const hashBytes = keccak_256(publicKeyWithoutPrefix);
+
+  // Take last 20 bytes
+  const addressBytes = hashBytes.slice(-20);
+
     // Convert to Omne address format
     return toOmneAddress(addressBytes);
   }
 
-  private hashTransaction(transaction: Transaction): Buffer {
+  private hashTransaction(transaction: Transaction): Uint8Array {
     // Simplified transaction hashing (in production, use proper RLP encoding)
     const txData = JSON.stringify({
       from: transaction.from,
@@ -173,20 +177,22 @@ export class WalletAccount {
       nonce: transaction.nonce,
       data: transaction.data || '0x'
     });
-    
-    return Buffer.from(sha3.keccak256(txData), 'hex');
+
+    return keccak_256(utf8ToBytes(txData));
   }
 
-  private signHash(hash: Buffer): Uint8Array {
-    const privateKeyBuffer = hexToBuffer(this.privateKey);
-    const signature = secp256k1.ecdsaSign(hash, privateKeyBuffer);
-    
-    // Add recovery ID for Ethereum compatibility
-    const recoveryId = signature.recid;
+  private signHash(hash: Uint8Array): Uint8Array {
+    const privateKeyBytes = hexToBuffer(this.privateKey);
+    const hashBytes = hash instanceof Uint8Array ? hash : new Uint8Array(hash);
+
+    const signature = sign(hashBytes, privateKeyBytes, { lowS: true });
+    const compact = signature.toCompactRawBytes();
+    const recoveryId = signature.recovery ?? 0;
+
     const fullSignature = new Uint8Array(65);
-    fullSignature.set(signature.signature);
+    fullSignature.set(compact);
     fullSignature[64] = recoveryId + 27; // Ethereum recovery ID format
-    
+
     return fullSignature;
   }
 
@@ -228,10 +234,10 @@ export class Wallet {
     }
 
     // Generate seed from mnemonic
-    this.seed = bip39.mnemonicToSeedSync(this.mnemonic, config?.password);
-    
-    // Create master key
-    this.masterKey = HDKey.fromMasterSeed(this.seed);
+  this.seed = bip39.mnemonicToSeedSync(this.mnemonic, config?.password);
+
+  // Create master key using browser-friendly BIP32 implementation
+  this.masterKey = HDKey.fromMasterSeed(new Uint8Array(this.seed));
   }
 
   /**
@@ -284,7 +290,7 @@ export class Wallet {
       throw new WalletError(`Failed to derive key at path: ${path}`, 'key_derivation');
     }
 
-    const privateKey = '0x' + derivedKey.privateKey.toString('hex');
+    const privateKey = bufferToHex(derivedKey.privateKey);
     return new WalletAccount(privateKey, path);
   }
 
@@ -432,3 +438,4 @@ export class WalletManager {
     this.accounts.clear();
   }
 }
+
