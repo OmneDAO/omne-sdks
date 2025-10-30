@@ -3,7 +3,8 @@
  */
 
 import { randomBytes, createCipheriv, createDecipheriv, pbkdf2Sync, scryptSync } from 'crypto';
-import * as sha3 from 'js-sha3';
+import { keccak_256 } from '@noble/hashes/sha3';
+import { bytesToHex } from '@noble/hashes/utils';
 
 export interface SecureKeyDerivationOptions {
   algorithm?: 'pbkdf2' | 'scrypt';
@@ -82,9 +83,9 @@ export function secureEncrypt(
     cipher.final()
   ]);
 
-    // Generate MAC key and verify integrity
-  const macKey = sha3.keccak256(Buffer.concat([derivedKey, Buffer.from('mac')]));
-  const mac = sha3.keccak256(Buffer.concat([encrypted, iv, salt, Buffer.from(macKey, 'hex')]));
+  // Generate MAC key and verify integrity
+  const macKey = keccakHex(Buffer.concat([derivedKey, Buffer.from('mac')]));
+  const mac = keccakHex(Buffer.concat([encrypted, iv, salt, Buffer.from(macKey, 'hex')]));
 
   // Zero out sensitive data
   derivedKey.fill(0);
@@ -136,8 +137,8 @@ export function secureDecrypt(
   const derivedKey = deriveKey(password, saltBuffer, options);
 
   // Verify MAC
-  const macKey = sha3.keccak256(Buffer.concat([derivedKey, Buffer.from('mac')]));
-  const expectedMac = sha3.keccak256(Buffer.concat([encryptedBuffer, ivBuffer, saltBuffer, Buffer.from(macKey, 'hex')]));
+  const macKey = keccakHex(Buffer.concat([derivedKey, Buffer.from('mac')]));
+  const expectedMac = keccakHex(Buffer.concat([encryptedBuffer, ivBuffer, saltBuffer, Buffer.from(macKey, 'hex')]));
 
   if (mac !== expectedMac) {
     // Zero out key before throwing
@@ -196,4 +197,18 @@ export function secureZero(buffer: Buffer): void {
  */
 export function secureRandomBytes(size: number): Buffer {
   return randomBytes(size);
+}
+
+function keccakHex(input: Buffer | Uint8Array | string): string {
+  let bytes: Uint8Array;
+
+  if (typeof input === 'string') {
+    bytes = Buffer.from(input, 'utf8');
+  } else if (Buffer.isBuffer(input)) {
+    bytes = new Uint8Array(input);
+  } else {
+    bytes = input;
+  }
+
+  return bytesToHex(keccak_256(bytes));
 }

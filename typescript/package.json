@@ -50,23 +50,28 @@
   },
   "homepage": "https://omne.org",
   "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "@noble/secp256k1": "^2.3.0",
+    "@scure/bip32": "^1.4.0",
     "big.js": "^6.2.1",
-    "bip39": "^3.1.0",
-    "cross-fetch": "^4.0.0",
-    "hdkey": "^2.1.0",
-    "js-sha3": "^0.9.3",
-    "secp256k1": "^5.0.0"
+    "bip39": "^3.1.0"
   },
   "optionalDependencies": {
     "ws": "^8.18.0"
   },
+  "peerDependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "peerDependenciesMeta": {
+    "node-fetch": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@rollup/plugin-json": "^6.1.0",
     "@types/big.js": "^6.2.2",
-    "@types/hdkey": "^2.1.0",
     "@types/jest": "^29.5.12",
     "@types/node": "^20.12.7",
-    "@types/secp256k1": "^4.0.6",
     "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
