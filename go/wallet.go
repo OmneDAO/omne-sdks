@@ -290,7 +290,7 @@ func NewAccountFromPrivateKey(privateKeyHex string) (*Account, error) {
 	}
 
 	publicKey := &privateKey.PublicKey
-	address := crypto.PubkeyToAddress(*publicKey).Hex()
+	address := strings.ToLower(crypto.PubkeyToAddress(*publicKey).Hex())
 
 	return &Account{
 		privateKey: privateKey,

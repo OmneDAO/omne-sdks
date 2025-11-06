@@ -2,9 +2,17 @@
  * Secure cryptographic utilities for Omne TypeScript SDK
  */
 
-import { randomBytes, createCipheriv, createDecipheriv, pbkdf2Sync, scryptSync } from 'crypto';
+import { ctr } from '@noble/ciphers/aes.js';
+import { pbkdf2 } from '@noble/hashes/pbkdf2';
+import { scrypt } from '@noble/hashes/scrypt';
+import { sha256 } from '@noble/hashes/sha256';
 import { keccak_256 } from '@noble/hashes/sha3';
-import { bytesToHex } from '@noble/hashes/utils';
+import {
+  bytesToHex,
+  hexToBytes,
+  randomBytes as nobleRandomBytes,
+  utf8ToBytes
+} from '@noble/hashes/utils';
 
 export interface SecureKeyDerivationOptions {
   algorithm?: 'pbkdf2' | 'scrypt';
@@ -28,76 +36,110 @@ export interface SecureEncryptionResult {
   mac: string;
 }
 
-/**
- * Secure key derivation using PBKDF2 or scrypt
- */
-export function deriveKey(
-  password: string,
-  salt: Buffer,
-  options: SecureKeyDerivationOptions = {}
-): Buffer {
-  const {
-    algorithm = 'pbkdf2',
-    iterations = 100000,
-    keyLength = 32,
-    scryptOptions = { N: 262144, r: 8, p: 1 }
-  } = options;
+const DEFAULT_SCRYPT_OPTIONS = { N: 262144, r: 8, p: 1 };
+const MAC_LABEL = utf8ToBytes('mac');
 
-  if (algorithm === 'pbkdf2') {
-    return pbkdf2Sync(password, salt, iterations, keyLength, 'sha256');
-  } else if (algorithm === 'scrypt') {
-    return scryptSync(password, salt, keyLength, scryptOptions);
-  } else {
-    throw new Error(`Unsupported key derivation algorithm: ${algorithm}`);
+function concatBytes(...arrays: Uint8Array[]): Uint8Array {
+  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
   }
+
+  return result;
 }
 
-/**
- * Secure encryption using AES-256-CTR with authenticated MAC
- */
-export function secureEncrypt(
-  data: string | Buffer,
+function normalizeHex(value: string): string {
+  const clean = value.startsWith('0x') ? value.slice(2) : value;
+  return clean.length % 2 === 0 ? clean : `0${clean}`;
+}
+
+function hexToBytesSafe(value: string): Uint8Array {
+  return hexToBytes(normalizeHex(value));
+}
+
+function randomBytes(size: number): Uint8Array {
+  return nobleRandomBytes(size);
+}
+
+export async function deriveKey(
+  password: string,
+  salt: Uint8Array,
+  options: SecureKeyDerivationOptions = {}
+): Promise<Uint8Array> {
+  const algorithm = options.algorithm ?? 'pbkdf2';
+  const iterations = options.iterations ?? 100000;
+  const keyLength = options.keyLength ?? 32;
+  const scryptOptions = options.scryptOptions ?? DEFAULT_SCRYPT_OPTIONS;
+
+  const passwordBytes = utf8ToBytes(password);
+
+  if (algorithm === 'pbkdf2') {
+    return pbkdf2(sha256, passwordBytes, salt, { c: iterations, dkLen: keyLength });
+  }
+
+  if (algorithm === 'scrypt') {
+    return await scrypt(passwordBytes, salt, {
+      N: scryptOptions.N,
+      r: scryptOptions.r,
+      p: scryptOptions.p,
+      dkLen: keyLength
+    });
+  }
+
+  throw new Error(`Unsupported key derivation algorithm: ${algorithm}`);
+}
+
+export async function secureEncrypt(
+  data: string | Uint8Array,
   password: string,
   options: SecureKeyDerivationOptions = {}
-): SecureEncryptionResult {
-  const {
-    algorithm = 'pbkdf2',
-    iterations = 100000,
-    saltLength = 32
-  } = options;
+): Promise<SecureEncryptionResult> {
+  const algorithm = options.algorithm ?? 'pbkdf2';
+  const iterations = options.iterations ?? 100000;
+  const saltLength = options.saltLength ?? 32;
+  const keyLength = options.keyLength ?? 32;
+  const scryptOptions = options.scryptOptions ?? DEFAULT_SCRYPT_OPTIONS;
 
-  // Generate cryptographically secure salt and IV
   const salt = randomBytes(saltLength);
   const iv = randomBytes(16);
 
-  // Derive encryption key
-  const derivedKey = deriveKey(password, salt, options);
+  const derivedKey = await deriveKey(password, salt, {
+    algorithm,
+    iterations,
+    keyLength,
+    scryptOptions
+  });
 
-  // Convert data to buffer if string
-  const dataBuffer = typeof data === 'string' ? Buffer.from(data, 'hex') : data;
+  const dataBytes =
+    typeof data === 'string' ? hexToBytesSafe(data) : data instanceof Uint8Array ? data : new Uint8Array(data);
 
-  // Encrypt using AES-256-CTR
-  const cipher = createCipheriv('aes-256-ctr', derivedKey, iv);
-  const encrypted = Buffer.concat([
-    cipher.update(dataBuffer),
-    cipher.final()
-  ]);
+  const cipher = ctr(derivedKey, iv);
+  const encrypted = cipher.encrypt(dataBytes);
 
-  // Generate MAC key and verify integrity
-  const macKey = keccakHex(Buffer.concat([derivedKey, Buffer.from('mac')]));
-  const mac = keccakHex(Buffer.concat([encrypted, iv, salt, Buffer.from(macKey, 'hex')]));
+  const macKey = keccakHex(concatBytes(derivedKey, MAC_LABEL));
+  const mac = keccakHex(concatBytes(encrypted, iv, salt, hexToBytesSafe(macKey)));
 
-  // Zero out sensitive data
   derivedKey.fill(0);
 
-  const kdfParams = algorithm === 'pbkdf2' 
-    ? { dklen: 32, salt: salt.toString('hex'), c: iterations }
-    : { dklen: 32, salt: salt.toString('hex'), n: options.scryptOptions?.N || 262144, r: options.scryptOptions?.r || 8, p: options.scryptOptions?.p || 1 };
+  const kdfParams =
+    algorithm === 'pbkdf2'
+      ? { dklen: keyLength, salt: bytesToHex(salt), c: iterations }
+      : {
+          dklen: keyLength,
+          salt: bytesToHex(salt),
+          n: scryptOptions.N,
+          r: scryptOptions.r,
+          p: scryptOptions.p
+        };
 
   return {
-    ciphertext: encrypted.toString('hex'),
-    salt: salt.toString('hex'),
-    iv: iv.toString('hex'),
+    ciphertext: bytesToHex(encrypted),
+    salt: bytesToHex(salt),
+    iv: bytesToHex(iv),
     algorithm: 'aes-256-ctr',
     kdf: algorithm,
     kdfParams,
@@ -105,110 +147,78 @@ export function secureEncrypt(
   };
 }
 
-/**
- * Secure decryption with MAC verification
- */
-export function secureDecrypt(
+export async function secureDecrypt(
   encryptionResult: SecureEncryptionResult,
   password: string
-): Buffer {
+): Promise<Uint8Array> {
   const { ciphertext, salt, iv, kdf, kdfParams, mac } = encryptionResult;
 
-  // Parse hex strings back to buffers
-  const saltBuffer = Buffer.from(salt, 'hex');
-  const ivBuffer = Buffer.from(iv, 'hex');
-  const encryptedBuffer = Buffer.from(ciphertext, 'hex');
+  const saltBytes = hexToBytesSafe(salt);
+  const ivBytes = hexToBytesSafe(iv);
+  const encryptedBytes = hexToBytesSafe(ciphertext);
 
-  // Derive decryption key
-  const options: SecureKeyDerivationOptions = {
+  const keyLength = kdfParams?.dklen ?? 32;
+  const iterations = kdf === 'pbkdf2' ? kdfParams?.c ?? 100000 : undefined;
+  const scryptOptions =
+    kdf === 'scrypt'
+      ? {
+          N: kdfParams?.n ?? DEFAULT_SCRYPT_OPTIONS.N,
+          r: kdfParams?.r ?? DEFAULT_SCRYPT_OPTIONS.r,
+          p: kdfParams?.p ?? DEFAULT_SCRYPT_OPTIONS.p
+        }
+      : undefined;
+
+  const derivedKey = await deriveKey(password, saltBytes, {
     algorithm: kdf as 'pbkdf2' | 'scrypt',
-    iterations: kdfParams.c,
-    keyLength: kdfParams.dklen
-  };
+    iterations,
+    keyLength,
+    scryptOptions
+  });
 
-  if (kdf === 'scrypt') {
-    options.scryptOptions = {
-      N: kdfParams.n,
-      r: kdfParams.r,
-      p: kdfParams.p
-    };
-  }
-
-  const derivedKey = deriveKey(password, saltBuffer, options);
-
-  // Verify MAC
-  const macKey = keccakHex(Buffer.concat([derivedKey, Buffer.from('mac')]));
-  const expectedMac = keccakHex(Buffer.concat([encryptedBuffer, ivBuffer, saltBuffer, Buffer.from(macKey, 'hex')]));
+  const macKey = keccakHex(concatBytes(derivedKey, MAC_LABEL));
+  const expectedMac = keccakHex(concatBytes(encryptedBytes, ivBytes, saltBytes, hexToBytesSafe(macKey)));
 
   if (mac !== expectedMac) {
-    // Zero out key before throwing
     derivedKey.fill(0);
     throw new Error('Invalid password or corrupted keystore');
   }
 
-  // Decrypt
-  const decipher = createDecipheriv('aes-256-ctr', derivedKey, ivBuffer);
-  const decrypted = Buffer.concat([
-    decipher.update(encryptedBuffer),
-    decipher.final()
-  ]);
+  const cipher = ctr(derivedKey, ivBytes);
+  const decrypted = cipher.decrypt(encryptedBytes);
 
-  // Zero out sensitive data
   derivedKey.fill(0);
 
   return decrypted;
 }
 
-/**
- * Generate cryptographically secure random ID
- */
 export function generateSecureId(): string {
-  const timestamp = Date.now();
+  const timestampBytes = new Uint8Array(8);
+  const view = new DataView(timestampBytes.buffer);
+  view.setBigUint64(0, BigInt(Date.now()));
+
   const randomPart = randomBytes(8);
-  const combined = Buffer.concat([
-    Buffer.from(timestamp.toString(16), 'hex'),
-    randomPart
-  ]);
-  return combined.toString('hex');
+  return bytesToHex(concatBytes(timestampBytes, randomPart));
 }
 
-/**
- * Generate secure random string
- */
 export function generateSecureRandom(bytes: number = 32): string {
-  return randomBytes(bytes).toString('hex');
+  return bytesToHex(randomBytes(bytes));
 }
 
-/**
- * Secure memory clearing (best effort in JavaScript)
- */
-export function secureZero(buffer: Buffer): void {
-  if (buffer && buffer.length > 0) {
-    // Fill with random data first
-    const random = randomBytes(buffer.length);
-    random.copy(buffer);
-    // Then zero
-    buffer.fill(0);
+export function secureZero(buffer: Uint8Array): void {
+  if (!buffer || buffer.length === 0) {
+    return;
   }
+
+  const random = randomBytes(buffer.length);
+  buffer.set(random);
+  buffer.fill(0);
 }
 
-/**
- * Create secure random bytes
- */
-export function secureRandomBytes(size: number): Buffer {
+export function secureRandomBytes(size: number): Uint8Array {
   return randomBytes(size);
 }
 
-function keccakHex(input: Buffer | Uint8Array | string): string {
-  let bytes: Uint8Array;
-
-  if (typeof input === 'string') {
-    bytes = Buffer.from(input, 'utf8');
-  } else if (Buffer.isBuffer(input)) {
-    bytes = new Uint8Array(input);
-  } else {
-    bytes = input;
-  }
-
+function keccakHex(input: Uint8Array | string): string {
+  const bytes = typeof input === 'string' ? utf8ToBytes(input) : input;
   return bytesToHex(keccak_256(bytes));
 }

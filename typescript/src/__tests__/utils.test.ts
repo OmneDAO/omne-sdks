@@ -2,9 +2,11 @@
  * Tests for utility functions
  */
 
-import { 
-  toQuar, 
-  fromQuar, 
+import { describe, expect, test } from '@jest/globals';
+
+import {
+  toQuar,
+  fromQuar,
   toOMC,
   formatBalance,
   isValidAddress,
@@ -19,6 +21,9 @@ import {
 } from '../utils';
 
 describe('Utility Functions', () => {
+  const sampleHex = '742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e';
+  const sampleOmne = `omne1${sampleHex}`;
+
   describe('Quar conversion', () => {
     test('toQuar converts OMC to quar correctly', () => {
       expect(toQuar('1')).toBe('1000000000000000000');
@@ -50,24 +55,25 @@ describe('Utility Functions', () => {
 
   describe('Address validation', () => {
     test('isValidAddress validates both Omne and hex addresses', () => {
-      // Omne addresses  
-      expect(isValidAddress('omne1hja1yjwwhdjrtjphtjty5d2smb7u5j3d')).toBe(true);
+      // Omne addresses
+      expect(isValidAddress(sampleOmne)).toBe(true);
       // Hex addresses (legacy)
-      expect(isValidAddress('0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e')).toBe(true);
-      expect(isValidAddress('742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e')).toBe(true);
+      expect(isValidAddress(`0x${sampleHex}`)).toBe(true);
+      expect(isValidAddress(sampleHex)).toBe(true);
     });
 
     test('isValidOmneAddress validates Omne format specifically', () => {
-      expect(isValidOmneAddress('omne1hja1yjwwhdjrtjphtjty5d2smb7u5j3d')).toBe(true);
-      expect(isValidOmneAddress('0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e')).toBe(false);
+      expect(isValidOmneAddress(sampleOmne)).toBe(true);
+      expect(isValidOmneAddress(`0x${sampleHex}`)).toBe(false);
       expect(isValidOmneAddress('invalid')).toBe(false);
     });
 
     test('isValidHexAddress validates hex format specifically', () => {
-      expect(isValidHexAddress('0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e')).toBe(true);
-      expect(isValidHexAddress('742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e')).toBe(true);
-      expect(isValidHexAddress('0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E')).toBe(true);
-      expect(isValidHexAddress('omne1hja1yjwwhdjrtjphtjty5d2smb7u5j3d')).toBe(false);
+      expect(isValidHexAddress(`0x${sampleHex}`)).toBe(true);
+      expect(isValidHexAddress(sampleHex)).toBe(true);
+      expect(isValidHexAddress('0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E')).toBe(false);
+      expect(isValidHexAddress(sampleHex.toUpperCase())).toBe(false);
+      expect(isValidHexAddress(sampleOmne)).toBe(false);
     });
 
     test('isValidAddress rejects invalid addresses', () => {
@@ -76,6 +82,8 @@ describe('Utility Functions', () => {
       expect(isValidAddress('omne1invalid')).toBe(false); // invalid Omne
       expect(isValidAddress('not_an_address')).toBe(false);
       expect(isValidAddress('')).toBe(false);
+      expect(isValidAddress('0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E')).toBe(false);
+      expect(isValidAddress(`omne1${sampleHex.toUpperCase()}`)).toBe(false);
     });
 
     test('Omne address encoding/decoding', () => {
@@ -83,19 +91,19 @@ describe('Utility Functions', () => {
         0x74, 0x2d, 0x35, 0xcc, 0x4b, 0xf6, 0x88, 0xae, 0xe6, 0xf7,
         0xc3, 0xc3, 0xa6, 0xb1, 0xc9, 0x8a, 0xae, 0xe5, 0xe8, 0x4e
       ]);
-      
+
       const omneAddr = toOmneAddress(testBytes);
-      expect(omneAddr).toMatch(/^omne1[123456789abcdefghjkmnpqrstuvwxyz]+$/);
-      
+      expect(omneAddr).toMatch(/^omne1[0-9a-f]{40}$/);
+
       const decoded = fromOmneAddress(omneAddr);
       expect(decoded).toEqual(testBytes);
     });
 
     test('parseAddress handles both formats', () => {
-      const hexResult = parseAddress('0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e');
+      const hexResult = parseAddress(`0x${sampleHex}`);
       expect(hexResult.format).toBe('hex');
       expect(hexResult.bytes.length).toBe(20);
-      
+
       const omneAddr = toOmneAddress(hexResult.bytes);
       const omneResult = parseAddress(omneAddr);
       expect(omneResult.format).toBe('omne');
@@ -103,21 +111,17 @@ describe('Utility Functions', () => {
     });
 
     test('normalizeAddress converts to Omne format', () => {
-      const hexAddr = '0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e';
+      const hexAddr = `0x${sampleHex}`;
       const normalized = normalizeAddress(hexAddr);
-      expect(normalized).toMatch(/^omne1[123456789abcdefghjkmnpqrstuvwxyz]+$/);
-      
+      expect(normalized).toMatch(/^omne1[0-9a-f]{40}$/);
+
       // Omne addresses should remain unchanged
-      const omneAddr = 'omne1hja1yjwwhdjrtjphtjty5d2smb7u5j3d';
+      const omneAddr = sampleOmne;
       expect(normalizeAddress(omneAddr)).toBe(omneAddr);
-      
-      // Different hex cases should convert to same Omne format
-      const normalized1 = normalizeAddress('742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e');
-      const normalized2 = normalizeAddress('0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E');
-      
-      expect(normalized1).toMatch(/^omne1[123456789abcdefghjkmnpqrstuvwxyz]+$/);
-      expect(normalized2).toMatch(/^omne1[123456789abcdefghjkmnpqrstuvwxyz]+$/);
-      expect(normalized1).toBe(normalized2);
+
+      // Uppercase hex inputs should be rejected
+      expect(() => normalizeAddress('0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E')).toThrow();
+      expect(() => normalizeAddress(sampleHex.toUpperCase())).toThrow();
     });
   });
 

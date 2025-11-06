@@ -1,10 +1,10 @@
 {
   "name": "@omne/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Official TypeScript/JavaScript SDK for Omne Blockchain - Commerce-first blockchain with dual-layer consensus and microscopic fees",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
-  "browser": "dist/index.esm.js",
+  "browser": "dist/index.browser.js",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
@@ -50,11 +50,13 @@
   },
   "homepage": "https://omne.org",
   "dependencies": {
+    "@noble/ciphers": "^2.0.1",
     "@noble/hashes": "^1.8.0",
     "@noble/secp256k1": "^2.3.0",
     "@scure/bip32": "^1.4.0",
+    "@scure/bip39": "^1.4.0",
     "big.js": "^6.2.1",
-    "bip39": "^3.1.0"
+    "buffer": "^6.0.3"
   },
   "optionalDependencies": {
     "ws": "^8.18.0"
@@ -68,6 +70,7 @@
     }
   },
   "devDependencies": {
+    "@rollup/plugin-inject": "^5.0.3",
     "@rollup/plugin-json": "^6.1.0",
     "@types/big.js": "^6.2.2",
     "@types/jest": "^29.5.12",
@@ -80,8 +83,8 @@
     "rimraf": "^5.0.7",
     "rollup": "^4.21.0",
     "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-node-polyfills": "^0.2.1",
     "rollup-plugin-node-resolve": "^5.2.0",
-    "rollup-plugin-terser": "^7.0.2",
     "rollup-plugin-typescript2": "^0.36.0",
     "ts-jest": "^29.2.0",
     "typedoc": "^0.26.5",

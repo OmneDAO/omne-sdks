@@ -1,6 +1,7 @@
 package omne
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,6 +40,16 @@ func TestOmneAddressConversion(t *testing.T) {
 		assert.Error(t, err, "Should reject invalid characters")
 	})
 
+	t.Run("FromOmneAddressUppercasePayload", func(t *testing.T) {
+		testBytes := [20]byte{0x74, 0x2d, 0x35, 0xcc, 0x4b, 0xf6, 0x88, 0xae, 0xe6, 0xf7, 0xc3, 0xc3, 0xa6, 0xb1, 0xc9, 0x8a, 0xae, 0xe5, 0xe8, 0x4e}
+		lower := ToOmneAddress(testBytes)
+		uppercasePayload := strings.ToUpper(lower[5:])
+		mixedAddr := "omne1" + uppercasePayload
+
+		_, err := FromOmneAddress(mixedAddr)
+		assert.Error(t, err, "Uppercase payload should be rejected")
+	})
+
 	t.Run("AddressValidation", func(t *testing.T) {
 		// Valid Omne address format
 		testBytes := [20]byte{0x74, 0x2d, 0x35, 0xcc, 0x4b, 0xf6, 0x88, 0xae, 0xe6, 0xf7, 0xc3, 0xc3, 0xa6, 0xb1, 0xc9, 0x8a, 0xae, 0xe5, 0xe8, 0x4e}
@@ -48,12 +59,12 @@ func TestOmneAddressConversion(t *testing.T) {
 		// Valid hex address format (backward compatibility)
 		hexAddr := "0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e"
 		assert.True(t, IsValidAddress(hexAddr), "Valid hex address should be accepted")
+		assert.False(t, IsValidAddress("0x742D35CC4BF688AEE6F7C3C3A6B1C98AEE5E84E"), "Uppercase hex should be rejected")
 
 		// Invalid formats
 		assert.False(t, IsValidAddress(""), "Empty string should be invalid")
 		assert.False(t, IsValidAddress("invalid"), "Random string should be invalid")
-		// Note: "omne1" with empty encoded part is actually considered valid by isValidBase32
-		// assert.False(t, IsValidAddress("omne1"), "Just prefix should be invalid")
+		assert.False(t, IsValidAddress("omne1"), "Just prefix should be invalid")
 		assert.False(t, IsValidAddress("0x123"), "Short hex should be invalid")
 	})
 }
@@ -62,8 +73,10 @@ func TestOmneAddressConversion(t *testing.T) {
 func TestAddressNormalization(t *testing.T) {
 	t.Run("NormalizeAddress", func(t *testing.T) {
 		// Test hex address normalization
-		hexAddr := "0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E"
-		normalized, err := NormalizeAddress(hexAddr)
+		_, err := NormalizeAddress("0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E")
+		require.Error(t, err)
+
+		normalized, err := NormalizeAddress("0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e")
 		require.NoError(t, err)
 		assert.Equal(t, "0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e", normalized)
 

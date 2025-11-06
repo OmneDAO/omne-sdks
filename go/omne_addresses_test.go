@@ -1,13 +1,14 @@
 package omne
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestOmneAddressEncoding tests the Omne-specific base32 encoding/decoding
+// TestOmneAddressEncoding ensures Omne hex encoding/decoding works as expected
 func TestOmneAddressEncoding(t *testing.T) {
 	t.Run("OmneEncodeDecode", func(t *testing.T) {
 		// Test with known test vectors
@@ -46,7 +47,8 @@ func TestOmneAddressEncoding(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				// Encode to Omne format
 				omneAddr := ToOmneAddress(tc.bytes)
-				assert.True(t, omneAddr[:5] == "omne1", "Should start with omne1 prefix")
+				assert.Equal(t, "omne1", omneAddr[:5], "Should start with omne1 prefix")
+				assert.Equal(t, 45, len(omneAddr), "Omne address should be prefix + 40 hex chars")
 
 				// Decode back to bytes
 				decodedBytes, err := FromOmneAddress(omneAddr)
@@ -59,34 +61,16 @@ func TestOmneAddressEncoding(t *testing.T) {
 		}
 	})
 
-	t.Run("Base32Validation", func(t *testing.T) {
-		// Test valid base32 strings
-		validBase32 := []string{
-			"123456789abcdefghjkmnpqrstuvwxyz",
-			"123",
-			"abc",
-			"xyz",
-		}
+	t.Run("OmneAddressFormatValidation", func(t *testing.T) {
+		validLower := "omne1" + strings.Repeat("ab", 20)
 
-		for _, valid := range validBase32 {
-			assert.True(t, isValidBase32(valid), "Should accept valid base32: %s", valid)
-		}
+		assert.True(t, isValidOmneAddress(validLower), "Should accept lowercase hex payload")
 
-		// Test invalid base32 strings
-		invalidBase32 := []string{
-			"0",   // Contains 0
-			"O",   // Contains O
-			"I",   // Contains I
-			"L",   // Contains L
-			"ABC", // Contains uppercase
-			"!@#", // Contains special characters
-			// Note: empty string is considered valid by the current implementation
-			// "",     // Empty string
-		}
-
-		for _, invalid := range invalidBase32 {
-			assert.False(t, isValidBase32(invalid), "Should reject invalid base32: %s", invalid)
-		}
+		assert.False(t, isValidOmneAddress("omne1"+strings.Repeat("g", 40)), "Should reject non-hex characters")
+		assert.False(t, isValidOmneAddress("omne1"+strings.Repeat("a", 39)), "Should reject payloads that are too short")
+		assert.False(t, isValidOmneAddress("omne1"+strings.Repeat("a", 41)), "Should reject payloads that are too long")
+		assert.False(t, isValidOmneAddress(strings.Repeat("a", 40)), "Should reject missing prefix")
+		assert.False(t, isValidOmneAddress("omne1"+strings.ToUpper(strings.Repeat("ab", 20))), "Should reject uppercase payloads")
 	})
 }
 

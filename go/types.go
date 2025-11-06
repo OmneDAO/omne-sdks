@@ -148,15 +148,28 @@ func isValidOmneAddress(address string) bool {
 		return false
 	}
 
-	encoded := address[5:] // Remove "omne1" prefix
-	return isValidBase32(encoded)
+	encoded := address[5:]
+	if len(encoded) != 40 {
+		return false
+	}
+
+	for _, char := range encoded {
+		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
+			return false
+		}
+	}
+
+	return true
 }
 
-// isValidHexAddress validates Ethereum-compatible hex address
+// isValidHexAddress validates Ethereum-compatible hex address using lowercase characters only
 func isValidHexAddress(address string) bool {
-	// Remove 0x prefix if present (case insensitive)
-	cleanAddr := strings.ToLower(address)
-	cleanAddr = strings.TrimPrefix(cleanAddr, "0x")
+	if strings.ToLower(address) != address {
+		return false
+	}
+
+	// Remove 0x prefix if present
+	cleanAddr := strings.TrimPrefix(address, "0x")
 
 	// Check length (40 hex characters = 20 bytes)
 	if len(cleanAddr) != 40 {
@@ -166,27 +179,6 @@ func isValidHexAddress(address string) bool {
 	// Check if all characters are valid hex
 	for _, char := range cleanAddr {
 		if !((char >= '0' && char <= '9') || (char >= 'a' && char <= 'f')) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// isValidBase32 validates Omne base32 encoding
-func isValidBase32(encoded string) bool {
-	// Omne alphabet (no 0, O, I, L for readability)
-	const alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-
-	for _, char := range encoded {
-		valid := false
-		for _, validChar := range alphabet {
-			if char == validChar {
-				valid = true
-				break
-			}
-		}
-		if !valid {
 			return false
 		}
 	}
@@ -242,8 +234,7 @@ func ToChecksumAddress(address string) (string, error) {
 
 // ToOmneAddress converts a 20-byte address to Omne format (omne1...)
 func ToOmneAddress(addressBytes [20]byte) string {
-	encoded := omneEncode(addressBytes)
-	return "omne1" + encoded
+	return "omne1" + hex.EncodeToString(addressBytes[:])
 }
 
 // FromOmneAddress converts an Omne address back to 20-byte array
@@ -252,73 +243,22 @@ func FromOmneAddress(address string) ([20]byte, error) {
 		return [20]byte{}, fmt.Errorf("invalid Omne address format - must start with 'omne1'")
 	}
 
-	encoded := address[5:] // Remove "omne1" prefix
-	return omneDecode(encoded)
-}
-
-// omneEncode encodes bytes to Omne-specific base32 format
-func omneEncode(bytes [20]byte) string {
-	// Custom base32 alphabet optimized for readability (no 0, O, I, L)
-	const alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-
-	// Convert bytes to big integer
-	num := new(big.Int).SetBytes(bytes[:])
-
-	if num.Cmp(big.NewInt(0)) == 0 {
-		return string(alphabet[0])
+	hexPayload := address[5:]
+	if len(hexPayload) != 40 {
+		return [20]byte{}, fmt.Errorf("invalid Omne address length - expected 40 hex characters")
 	}
 
-	var result []byte
-	base := big.NewInt(32)
-	remainder := new(big.Int)
-
-	for num.Cmp(big.NewInt(0)) > 0 {
-		num.DivMod(num, base, remainder)
-		result = append(result, alphabet[remainder.Int64()])
+	if strings.ToLower(hexPayload) != hexPayload {
+		return [20]byte{}, fmt.Errorf("invalid Omne address - uppercase characters are not allowed")
 	}
 
-	// Reverse the result
-	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
-		result[i], result[j] = result[j], result[i]
+	decoded, err := hex.DecodeString(hexPayload)
+	if err != nil {
+		return [20]byte{}, fmt.Errorf("invalid hex characters in Omne address: %w", err)
 	}
 
-	return string(result)
-}
-
-// omneDecode decodes Omne base32 format back to bytes
-func omneDecode(encoded string) ([20]byte, error) {
-	const alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-
-	num := big.NewInt(0)
-	base := big.NewInt(32)
-
-	for _, ch := range encoded {
-		value := -1
-		for i, c := range alphabet {
-			if rune(c) == ch {
-				value = i
-				break
-			}
-		}
-
-		if value == -1 {
-			return [20]byte{}, fmt.Errorf("invalid character in Omne address: %c", ch)
-		}
-
-		num.Mul(num, base)
-		num.Add(num, big.NewInt(int64(value)))
-	}
-
-	// Convert back to 20 bytes
-	bytes := num.Bytes()
 	var result [20]byte
-
-	// Pad with zeros if necessary
-	if len(bytes) > 20 {
-		return [20]byte{}, fmt.Errorf("address value too large")
-	}
-
-	copy(result[20-len(bytes):], bytes)
+	copy(result[:], decoded)
 	return result, nil
 }
 
