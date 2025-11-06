@@ -39,6 +39,8 @@ class TestUtils:
         # Invalid addresses
         assert not is_valid_address("0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84")  # Too short
         assert not is_valid_address("0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84ex")  # Invalid hex
+        assert not is_valid_address("0x742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E")  # Uppercase hex rejected
+        assert not is_valid_address("omne1" + "AB" * 20)  # Uppercase Omne rejected
         assert not is_valid_address("not_an_address")
 
 
@@ -112,6 +114,9 @@ class TestWallet:
         
         with pytest.raises(ValueError):
             from_omne_address("0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e")
+
+        with pytest.raises(ValueError):
+            from_omne_address("omne1" + ("AB" * 20))
     
     def test_private_key_import(self):
         """Test direct private key import"""
@@ -233,8 +238,8 @@ class TestOmneClient:
     @pytest.mark.asyncio
     async def test_transaction_sending(self, mock_client):
         """Test transaction sending"""
-        from_addr = "omne1hja1yjwwhdjrtjphtjty5d2smb7u5j3d"
-        to_addr = "omne1u66h1rvbedgummrtw7k5cbxx9ny4vnzu"
+        from_addr = "omne10123456789abcdef0123456789abcdef01234567"
+        to_addr = "omne189abcdef0123456789abcdef0123456789abcdef"
         
         # Mock responses
         with patch.object(mock_client, 'get_nonce', return_value=5):

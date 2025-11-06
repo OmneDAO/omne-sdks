@@ -92,7 +92,7 @@ func TestOMCQuarConversion(t *testing.T) {
 		require.NoError(t, err)
 		// Accept the actual precision result from big.Float conversion
 		actualResult := quar.String()
-		assert.True(t, actualResult == "1000000000000000" || actualResult == "999999999999999", 
+		assert.True(t, actualResult == "1000000000000000" || actualResult == "999999999999999",
 			"Expected 1000000000000000 or 999999999999999, got %s", actualResult)
 
 		// Test invalid string
@@ -139,10 +139,10 @@ func TestAddressValidation(t *testing.T) {
 		// Test with a known conversion
 		testBytes := [20]byte{0x74, 0x2d, 0x35, 0xcc, 0x4b, 0xf6, 0x88, 0xae, 0xe6, 0xf7, 0xc3, 0xc3, 0xa6, 0xb1, 0xc9, 0x8a, 0xae, 0xe5, 0xe8, 0x4e}
 		omneAddr := ToOmneAddress(testBytes)
-		
+
 		assert.True(t, strings.HasPrefix(omneAddr, "omne1"), "Address should start with omne1")
 		assert.True(t, IsValidAddress(omneAddr), "Generated Omne address should be valid")
-		
+
 		// Test round-trip conversion
 		decodedBytes, err := FromOmneAddress(omneAddr)
 		assert.NoError(t, err)
@@ -152,7 +152,6 @@ func TestAddressValidation(t *testing.T) {
 	t.Run("Valid hex addresses (backward compatibility)", func(t *testing.T) {
 		validAddresses := []string{
 			"0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e",
-			"0x742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E",
 			"742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e",
 		}
 
@@ -166,9 +165,10 @@ func TestAddressValidation(t *testing.T) {
 			"",
 			"0x123",
 			"omne1invalid0characters",
-			"0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84g", // invalid hex char
-			"742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84", // too short
+			"0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84g",  // invalid hex char
+			"742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84",     // too short
 			"0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84ee", // too long
+			"0x742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E",  // uppercase hex
 		}
 
 		for _, addr := range invalidAddresses {
@@ -177,13 +177,10 @@ func TestAddressValidation(t *testing.T) {
 	})
 
 	t.Run("NormalizeAddress", func(t *testing.T) {
-		// Test with 0x prefix
-		normalized, err := NormalizeAddress("0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E")
-		require.NoError(t, err)
-		assert.Equal(t, "0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e", normalized)
+		_, err := NormalizeAddress("0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E")
+		require.Error(t, err)
 
-		// Test without prefix
-		normalized, err = NormalizeAddress("742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E")
+		normalized, err := NormalizeAddress("742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e")
 		require.NoError(t, err)
 		assert.Equal(t, "0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e", normalized)
 
@@ -198,7 +195,7 @@ func TestGasCalculations(t *testing.T) {
 		gasUsed := uint64(21000)
 		gasPriceQuar := NewQuar(big.NewInt(1000)) // 1000 quar per gas
 		cost := CalculateGasCost(gasUsed, gasPriceQuar)
-		
+
 		expected := NewQuar(big.NewInt(21000000)) // 21000 * 1000
 		assert.Equal(t, expected.String(), cost.String())
 	})
@@ -211,7 +208,7 @@ func TestGasCalculations(t *testing.T) {
 		assert.Equal(t, uint64(200000), EstimateGas("contractDeploy", false))
 		assert.Equal(t, uint64(350000), EstimateGas("orc20Deploy", false))
 		assert.Equal(t, uint64(150000), EstimateGas("computeJob", false))
-		
+
 		// Test unknown type (should default to transfer)
 		assert.Equal(t, uint64(21000), EstimateGas("unknown", false))
 	})
@@ -244,18 +241,18 @@ func TestNetworkConfigs(t *testing.T) {
 
 func TestSDKInfo(t *testing.T) {
 	info := GetSDKInfo()
-	
+
 	assert.Equal(t, Name, info["name"])
 	assert.Equal(t, Version, info["version"])
 	assert.Equal(t, QuarPrecision, info["quarPrecision"])
-	
+
 	// Test supported networks
 	networks, ok := info["supportedNetworks"].([]string)
 	require.True(t, ok)
 	assert.Contains(t, networks, "primum")
 	assert.Contains(t, networks, "testum")
 	assert.Contains(t, networks, "principalis")
-	
+
 	// Test features
 	features, ok := info["features"].(map[string]bool)
 	require.True(t, ok)
@@ -267,7 +264,7 @@ func TestSDKInfo(t *testing.T) {
 func TestConstants(t *testing.T) {
 	// Test QuarPrecision
 	assert.Equal(t, 18, QuarPrecision)
-	
+
 	// Test QuarPerOMC
 	expected := new(big.Int).Exp(big.NewInt(10), big.NewInt(18), nil)
 	assert.Equal(t, expected.String(), QuarPerOMC.String())

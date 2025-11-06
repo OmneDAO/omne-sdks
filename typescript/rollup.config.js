@@ -1,35 +1,40 @@
 const typescript = require('rollup-plugin-typescript2');
 const resolve = require('rollup-plugin-node-resolve');
 const commonjs = require('rollup-plugin-commonjs');
-const { terser } = require('rollup-plugin-terser');
 const json = require('@rollup/plugin-json');
-const pkg = require('./package.json');
+const inject = require('@rollup/plugin-inject');
+const nodePolyfills = require('rollup-plugin-node-polyfills');
+
+const createTsPlugin = (options = {}) =>
+  typescript({
+    tsconfig: './tsconfig.json',
+    sourceMap: true,
+    declaration: options.declaration ?? false,
+    declarationDir: './dist',
+    useTsconfigDeclarationDir: true,
+    clean: options.clean ?? false
+  });
 
 module.exports = [
-  // CommonJS build (Node.js)
+  // CommonJS build for Node.js consumers
   {
     input: 'src/index.ts',
     output: {
       file: 'dist/index.cjs.js',
       format: 'cjs',
-      sourcemap: true,
+      sourcemap: true
     },
     plugins: [
       json(),
-      typescript({
-        tsconfig: './tsconfig.json',
-        sourceMap: true,
-        declaration: true,
-        declarationDir: './dist',
-      }),
+      createTsPlugin({ declaration: true, clean: true }),
       resolve({
-        preferBuiltins: true,
+        preferBuiltins: true
       }),
-      commonjs(),
+      commonjs()
     ],
-  external: ['crypto', 'fs', 'path', 'os', 'ws', 'node-fetch']
+    external: ['crypto', 'fs', 'path', 'os', 'ws', 'node-fetch']
   },
-  // ESM build (Browser-compatible)
+  // Native ESM build for Node.js (tree-shake friendly)
   {
     input: 'src/index.ts',
     output: {
@@ -39,26 +44,36 @@ module.exports = [
     },
     plugins: [
       json(),
+      createTsPlugin(),
       resolve({
-        preferBuiltins: false, // Don't prefer Node.js built-ins for browser
-        browser: true, // Use browser versions of packages
+        preferBuiltins: true
       }),
-      commonjs(),
-      typescript({
-        tsconfig: './tsconfig.json',
-        sourceMap: true,
-        declaration: true,
-        declarationDir: './dist',
-        rollupCommonJSResolveHack: true,
-        clean: true,
-        useTsconfigDeclarationDir: true
-      })
+      commonjs()
     ],
-    // External more Node.js specific modules for browser build
-    external: [
-  'crypto', 'fs', 'path', 'os', 'ws', 
-  'assert', 'stream', 'http', 'https', 'url', 'zlib', 'buffer', 'util', 'punycode', 'events',
-  'node-fetch'
-    ]
+    external: ['crypto', 'fs', 'path', 'os', 'ws', 'node-fetch']
+  },
+  // Browser-focused ESM build with polyfills
+  {
+    input: 'src/index.ts',
+    output: {
+      file: 'dist/index.browser.js',
+      format: 'esm',
+      sourcemap: true
+    },
+    plugins: [
+      json(),
+      createTsPlugin(),
+      nodePolyfills(),
+      inject({
+        Buffer: ['buffer', 'Buffer'],
+        process: 'process'
+      }),
+      resolve({
+        browser: true,
+        preferBuiltins: false
+      }),
+      commonjs()
+    ],
+    external: ['ws', 'node-fetch']
   }
 ];

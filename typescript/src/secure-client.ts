@@ -3,6 +3,7 @@
  */
 
 import { generateSecureRandom } from './secure-crypto';
+import { hexToBuffer } from './utils';
 
 export class SecureRequestManager {
   private requestCounter: number = 0;
@@ -24,8 +25,9 @@ export class SecureRequestManager {
    */
   generateNumericRequestId(): number {
     // Use secure random for numeric ID
-    const randomBytes = Buffer.from(generateSecureRandom(4), 'hex');
-    let id = randomBytes.readUInt32BE(0);
+  const randomBytes = hexToBuffer(generateSecureRandom(4));
+  const view = new DataView(randomBytes.buffer, randomBytes.byteOffset, randomBytes.byteLength);
+  let id = view.getUint32(0, false);
     
     // Ensure positive number
     id = Math.abs(id);

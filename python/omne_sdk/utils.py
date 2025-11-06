@@ -10,6 +10,8 @@ QUAR_PER_OMC = 10**18
 QUAR_PER_MICRO_OMC = 10**12
 QUAR_PER_MILLI_OMC = 10**15
 
+LOWER_HEX_DIGITS = set("0123456789abcdef")
+
 
 def to_quar(omc_amount: Union[str, int, float, Decimal]) -> int:
     """
@@ -113,18 +115,18 @@ def _validate_omne_address(address: str) -> str:
     """Validate omne1 address format"""
     if not address.startswith('omne1'):
         raise ValueError("Invalid Omne address format - must start with 'omne1'")
-    
-    encoded = address[5:]  # Remove "omne1" prefix
-    if not _is_valid_base32(encoded):
+
+    encoded = address[5:]
+    if len(encoded) != 40:
+        raise ValueError("Invalid Omne address length - expected 40 hex characters")
+
+    if encoded.lower() != encoded:
+        raise ValueError("Invalid Omne address - uppercase characters are not allowed")
+
+    if not all(char in LOWER_HEX_DIGITS for char in encoded):
         raise ValueError("Invalid characters in Omne address")
-    
-    # Try to decode to validate length
-    try:
-        decoded = _omne_decode(encoded)
-    except ValueError as e:
-        raise ValueError(f"Invalid Omne address: {e}")
-    
-    return f"0x{decoded.hex()}"
+
+    return f"0x{encoded}"
 
 
 def _validate_hex_address(address: str) -> str:
@@ -132,6 +134,9 @@ def _validate_hex_address(address: str) -> str:
     # Remove 0x prefix if present
     if address.startswith('0x'):
         address = address[2:]
+
+    if address.lower() != address:
+        raise ValueError("Invalid address - uppercase characters are not allowed")
     
     # Check length (40 hex characters = 20 bytes)
     if len(address) != 40:
@@ -147,13 +152,6 @@ def _validate_hex_address(address: str) -> str:
     return f"0x{address.lower()}"
 
 
-def _is_valid_base32(encoded: str) -> bool:
-    """Validate Omne base32 encoding"""
-    # Omne alphabet (no 0, O, I, L for readability)
-    alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-    return all(char in alphabet for char in encoded)
-
-
 def to_omne_address(address_bytes: bytes) -> str:
     """
     Convert 20-byte address to Omne format (omne1...)
@@ -167,7 +165,7 @@ def to_omne_address(address_bytes: bytes) -> str:
     if len(address_bytes) != 20:
         raise ValueError("Address must be exactly 20 bytes")
     
-    encoded = _omne_encode(address_bytes)
+    encoded = address_bytes.hex()
     return f"omne1{encoded}"
 
 
@@ -187,46 +185,17 @@ def from_omne_address(address: str) -> bytes:
     if not address.startswith('omne1'):
         raise ValueError("Invalid Omne address format - must start with 'omne1'")
     
-    encoded = address[5:]  # Remove "omne1" prefix
-    return _omne_decode(encoded)
+    encoded = address[5:]
+    if len(encoded) != 40:
+        raise ValueError("Invalid Omne address length - expected 40 hex characters")
 
+    if not all(char in LOWER_HEX_DIGITS for char in encoded):
+        raise ValueError("Invalid characters in Omne address")
 
-def _omne_encode(address_bytes: bytes) -> str:
-    """Encode bytes to Omne-specific base32 format"""
-    # Custom base32 alphabet optimized for readability (no 0, O, I, L)
-    alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-    
-    # Convert bytes to integer
-    num = int.from_bytes(address_bytes, 'big')
-    
-    if num == 0:
-        return alphabet[0]
-    
-    result = []
-    while num > 0:
-        result.append(alphabet[num % 32])
-        num //= 32
-    
-    return ''.join(reversed(result))
-
-
-def _omne_decode(encoded: str) -> bytes:
-    """Decode Omne base32 format back to bytes"""
-    alphabet = "123456789abcdefghjkmnpqrstuvwxyz"
-    
-    num = 0
-    for ch in encoded:
-        try:
-            value = alphabet.index(ch)
-        except ValueError:
-            raise ValueError(f"Invalid character in Omne address: {ch}")
-        num = num * 32 + value
-    
-    # Convert back to 20 bytes
     try:
-        return num.to_bytes(20, 'big')
-    except OverflowError:
-        raise ValueError("Address value too large")
+        return bytes.fromhex(encoded)
+    except ValueError as exc:
+        raise ValueError("Invalid hex characters in Omne address") from exc
 
 
 def is_valid_address(address: str) -> bool:
