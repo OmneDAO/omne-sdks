@@ -38,8 +38,11 @@ import {
   validateTransaction, 
   isValidAddress,
   toQuar,
+  fromQuar,
   retry,
-  sleep
+  sleep,
+  parseAddress,
+  bufferToHex
 } from './utils';
 import { 
   SecureRequestManager, 
@@ -93,6 +96,59 @@ async function resolveFetch(): Promise<typeof fetch> {
   }
 
   throw new NetworkError('Global fetch is not available. Provide a fetch polyfill when running outside browser environments.');
+}
+
+function normalizeAddressToHex(address: string): string {
+  const parsed = parseAddress(address);
+  return bufferToHex(parsed.bytes);
+}
+
+function parseRpcBigInt(value: unknown): bigint {
+  if (typeof value === 'bigint') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      return 0n;
+    }
+    return BigInt(Math.trunc(value));
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return 0n;
+    }
+    if (trimmed === 'latest') {
+      return 0n;
+    }
+    if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
+      try {
+        return BigInt(trimmed);
+      } catch {
+        return 0n;
+      }
+    }
+    if (trimmed.includes('.')) {
+      const numeric = Number(trimmed);
+      if (Number.isFinite(numeric)) {
+        return BigInt(Math.trunc(numeric));
+      }
+      return 0n;
+    }
+    try {
+      return BigInt(trimmed);
+    } catch {
+      return 0n;
+    }
+  }
+
+  return 0n;
+}
+
+function parseRpcNumber(value: unknown): number {
+  return Number(parseRpcBigInt(value));
 }
 
 /**
@@ -182,7 +238,7 @@ export class OmneClient {
    * Get network information
    */
   async getNetworkInfo(): Promise<NetworkInfo> {
-    return await this.request('net_info');
+    return await this.request('omne_networkInfo');
   }
 
   /**
@@ -192,8 +248,24 @@ export class OmneClient {
     if (!isValidAddress(address)) {
       throw ValidationError.invalidAddress(address);
     }
+    const hexAddress = normalizeAddressToHex(address);
+    const result = await this.request<any>('omne_getBalance', [hexAddress]);
 
-    return await this.request('account_balance', [address]);
+    const balanceQuarCandidate = result?.balanceQuar ?? result?.balance ?? '0';
+    const balanceQuar = typeof balanceQuarCandidate === 'string'
+      ? balanceQuarCandidate
+      : String(balanceQuarCandidate ?? '0');
+
+    const lastUpdatedCandidate = result?.lastUpdated ?? result?.blockNumber ?? 0;
+    const lastUpdated = parseRpcNumber(lastUpdatedCandidate);
+
+    return {
+      address,
+      balance: balanceQuar,
+      balanceQuar,
+      balanceOMC: fromQuar(balanceQuar).toString(),
+      lastUpdated
+    };
   }
 
   /**
@@ -203,9 +275,19 @@ export class OmneClient {
     if (!isValidAddress(address)) {
       throw ValidationError.invalidAddress(address);
     }
+    const hexAddress = normalizeAddressToHex(address);
+    const result = await this.request<any>('omne_getTransactionCount', [hexAddress]);
 
-    const result = await this.request('account_info', [address]);
-    return result.nonce || 0;
+    if (typeof result === 'number') {
+      return result;
+    }
+    if (typeof result === 'string') {
+      return parseRpcNumber(result);
+    }
+    if (result && typeof result === 'object' && 'nonce' in result) {
+      return parseRpcNumber((result as any).nonce);
+    }
+    return 0;
   }
 
   /**
@@ -221,7 +303,13 @@ export class OmneClient {
     }
 
     // Submit transaction
-    const txHash = await this.request('tx_send', [transaction]);
+    const normalizedTransaction: Transaction = {
+      ...transaction,
+      from: normalizeAddressToHex(transaction.from),
+      to: normalizeAddressToHex(transaction.to)
+    };
+
+    const txHash = await this.request('omne_sendTransaction', [normalizedTransaction]);
     
     // Wait for confirmation
     return await this.waitForTransaction(txHash);
@@ -368,7 +456,7 @@ export class OmneClient {
    * Get block information
    */
   async getBlock(blockNumber: number | 'latest'): Promise<Block> {
-    return await this.request('eth_getBlockByNumber', [
+    return await this.request('omne_getBlockByNumber', [
       blockNumber === 'latest' ? 'latest' : `0x${blockNumber.toString(16)}`,
       false
     ]);
@@ -383,7 +471,7 @@ export class OmneClient {
     }
 
     try {
-      return await this.request('tx_receipt', [txHash]);
+  return await this.request('omne_getTransactionReceipt', [txHash]);
     } catch (error) {
       if (error instanceof RPCError && error.rpcCode === -32000) {
         // Transaction not found
