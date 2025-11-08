@@ -32,21 +32,26 @@ export type ConsensusLayer = 'commerce' | 'security';
 /**
  * Network information structure
  */
+export interface GasPricePolicy {
+  baseFeeQuar: string;
+  maxFeeSpikeMultiplier: number;
+  priorityFeeEnabled: boolean;
+  subsidizationActive: boolean;
+}
+
+export interface NetworkFeatures {
+  orc20Enabled: boolean;
+  oonEnabled: boolean;
+  crossChainEnabled: boolean;
+  [feature: string]: boolean;
+}
+
 export interface NetworkInfo {
   chainId: number;
-  networkType: NetworkType;
-  latestBlock: number;
-  gasPrice: {
-    base: string;      // Base gas price in quar
-    commerce: string;  // Commerce layer gas price in quar  
-    compute: string;   // Compute layer gas price in quar
-  };
-  features: {
-    dualLayerConsensus: boolean;
-    microscopicFees: boolean;
-    instantFinality: boolean;
-    computationalOrchestration: boolean;
-  };
+  networkName: string;
+  apiVersion: string;
+  gasPricePolicy: GasPricePolicy;
+  features: NetworkFeatures;
 }
 
 /**
@@ -55,6 +60,7 @@ export interface NetworkInfo {
 export interface Balance {
   address: string;
   balance: string;        // Balance in quar (10^-18 OMC precision)
+  balanceQuar: string;    // Explicit quar balance alias
   balanceOMC: string;     // Human-readable balance in OMC
   lastUpdated: number;    // Block number of last update
 }
@@ -106,9 +112,9 @@ export interface Block {
   gasUsed: number;
   transactionCount: number;
   transactions: string[];
-  layer: ConsensusLayer;     // 'commerce' or 'security'
-  consensusInfo: {
-    blockTime: number;       // 3000ms for commerce, 540000ms for security
+  layer?: ConsensusLayer;
+  consensusInfo?: {
+    blockTime: number;
     finalityType: 'instant' | 'standard';
   };
 }

@@ -2,7 +2,7 @@
  * Secure cryptographic utilities for Omne TypeScript SDK
  */
 
-import { ctr } from '@noble/ciphers/aes.js';
+import { ctr } from '@noble/ciphers/aes';
 import { pbkdf2 } from '@noble/hashes/pbkdf2';
 import { scrypt } from '@noble/hashes/scrypt';
 import { sha256 } from '@noble/hashes/sha256';

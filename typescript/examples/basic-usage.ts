@@ -1,3 +1,5 @@
+/// <reference types="node" />
+
 /**
  * Basic usage example for Omne TypeScript SDK
  * 
@@ -6,7 +8,6 @@
  */
 
 import { 
-  OmneClient, 
   Wallet, 
   toQuar, 
   fromQuar, 
@@ -20,14 +21,15 @@ async function basicUsageExample() {
 
   // 1. Create client connection
   console.log('📡 Connecting to Omne network...');
-  const client = createClient('primum'); // Use primum test network
+  const rpcUrl = process.env.OMNE_RPC_URL || 'http://127.0.0.1:8545';
+  const client = createClient(rpcUrl);
   
   try {
     await client.connect();
-    console.log('✅ Connected to Omne network\n');
+    console.log(`✅ Connected to Omne network at ${rpcUrl}\n`);
   } catch (error) {
-    console.log('⚠️ Connection failed (expected without running node)');
-    console.log('📝 Continuing with offline examples...\n');
+    console.log(`⚠️ Connection failed for ${rpcUrl}`);
+    console.log('📝 Falling back to offline demonstrations...\n');
   }
 
   // 2. Wallet operations
