@@ -1,8 +1,15 @@
 /**
  * Secure cryptographic utilities for Omne TypeScript SDK
+ *
+ * AES implementation uses aes-js in Node/Jest and WebCrypto as fallback.
+ * Keeps KDF and MAC semantics compatible with existing keystore tests:
+ *  - cipher name: "aes-256-ctr"
+ *  - MAC computed as keccak( encrypted || iv || salt || keccak(derivedKey || "mac") )
+ *
+ * NOTE: This file is a corrected replacement for the earlier secure-crypto.ts
+ * that avoided importing '@noble/ciphers/aes' to prevent Jest ESM resolution issues.
  */
 
-import { ctr } from '@noble/ciphers/aes';
 import { pbkdf2 } from '@noble/hashes/pbkdf2';
 import { scrypt } from '@noble/hashes/scrypt';
 import { sha256 } from '@noble/hashes/sha256';
@@ -30,7 +37,7 @@ export interface SecureEncryptionResult {
   ciphertext: string;
   salt: string;
   iv: string;
-  algorithm: string;
+  algorithm: string; // e.g. 'aes-256-ctr'
   kdf: string;
   kdfParams: any;
   mac: string;
@@ -63,6 +70,50 @@ function hexToBytesSafe(value: string): Uint8Array {
 
 function randomBytes(size: number): Uint8Array {
   return nobleRandomBytes(size);
+}
+
+/**
+ * AES-CTR encrypt/decrypt helpers
+ * Use aes-js via require (CJS) in Node tests, fallback to WebCrypto in browser.
+ */
+async function aesCtrEncrypt(keyBytes: Uint8Array, ivBytes: Uint8Array, plaintext: Uint8Array): Promise<Uint8Array> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const aesjs = require('aes-js');
+    const counter = new aesjs.Counter(Array.from(ivBytes)); // aes-js Counter accepts an array
+    const aesCtr = new aesjs.ModeOfOperation.ctr(keyBytes, counter);
+    const encrypted = aesCtr.encrypt(plaintext);
+    return new Uint8Array(encrypted);
+  } catch {
+    if (typeof (globalThis as any).crypto !== 'undefined' && (globalThis as any).crypto.subtle) {
+      const subtle = (globalThis as any).crypto.subtle;
+      const cryptoKey = await subtle.importKey('raw', keyBytes, 'AES-CTR', false, ['encrypt']);
+      const algo = { name: 'AES-CTR', counter: ivBytes, length: 64 };
+      const encrypted = await subtle.encrypt(algo, cryptoKey, plaintext);
+      return new Uint8Array(encrypted);
+    }
+    throw new Error('No AES implementation available: install aes-js or run in an environment with WebCrypto.');
+  }
+}
+
+async function aesCtrDecrypt(keyBytes: Uint8Array, ivBytes: Uint8Array, ciphertext: Uint8Array): Promise<Uint8Array> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const aesjs = require('aes-js');
+    const counter = new aesjs.Counter(Array.from(ivBytes));
+    const aesCtr = new aesjs.ModeOfOperation.ctr(keyBytes, counter);
+    const decrypted = aesCtr.decrypt(ciphertext);
+    return new Uint8Array(decrypted);
+  } catch {
+    if (typeof (globalThis as any).crypto !== 'undefined' && (globalThis as any).crypto.subtle) {
+      const subtle = (globalThis as any).crypto.subtle;
+      const cryptoKey = await subtle.importKey('raw', keyBytes, 'AES-CTR', false, ['decrypt']);
+      const algo = { name: 'AES-CTR', counter: ivBytes, length: 64 };
+      const decrypted = await subtle.decrypt(algo, cryptoKey, ciphertext);
+      return new Uint8Array(decrypted);
+    }
+    throw new Error('No AES implementation available: install aes-js or run in an environment with WebCrypto.');
+  }
 }
 
 export async function deriveKey(
@@ -105,8 +156,7 @@ export async function secureEncrypt(
   const scryptOptions = options.scryptOptions ?? DEFAULT_SCRYPT_OPTIONS;
 
   const salt = randomBytes(saltLength);
-  const iv = randomBytes(16);
-
+  const iv = randomBytes(16); // 128-bit IV for CTR
   const derivedKey = await deriveKey(password, salt, {
     algorithm,
     iterations,
@@ -117,12 +167,15 @@ export async function secureEncrypt(
   const dataBytes =
     typeof data === 'string' ? hexToBytesSafe(data) : data instanceof Uint8Array ? data : new Uint8Array(data);
 
-  const cipher = ctr(derivedKey, iv);
-  const encrypted = cipher.encrypt(dataBytes);
+  // Encrypt with AES-CTR
+  const encrypted = await aesCtrEncrypt(derivedKey, iv, dataBytes);
 
+  // Compute MAC: macKey = keccak(derivedKey || MAC_LABEL)
   const macKey = keccakHex(concatBytes(derivedKey, MAC_LABEL));
+  // mac = keccak(encrypted || iv || salt || hexToBytes(macKey))
   const mac = keccakHex(concatBytes(encrypted, iv, salt, hexToBytesSafe(macKey)));
 
+  // Zero sensitive buffers
   derivedKey.fill(0);
 
   const kdfParams =
@@ -175,6 +228,7 @@ export async function secureDecrypt(
     scryptOptions
   });
 
+  // Recompute MAC and verify
   const macKey = keccakHex(concatBytes(derivedKey, MAC_LABEL));
   const expectedMac = keccakHex(concatBytes(encryptedBytes, ivBytes, saltBytes, hexToBytesSafe(macKey)));
 
@@ -183,8 +237,7 @@ export async function secureDecrypt(
     throw new Error('Invalid password or corrupted keystore');
   }
 
-  const cipher = ctr(derivedKey, ivBytes);
-  const decrypted = cipher.decrypt(encryptedBytes);
+  const decrypted = await aesCtrDecrypt(derivedKey, ivBytes, encryptedBytes);
 
   derivedKey.fill(0);
 
