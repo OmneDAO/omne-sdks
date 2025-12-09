@@ -1,27 +1,41 @@
+// ESM-aware Jest config using ts-jest ESM preset.
+// Place at typescript/jest.config.js
+
 module.exports = {
-  preset: 'ts-jest/presets/default-esm',
+  // Use the ts-jest ESM-aware preset
+  preset: 'ts-jest/presets/js-with-ts-esm',
+
   testEnvironment: 'node',
-  roots: ['<rootDir>/src'],
-  testMatch: [
-    '**/__tests__/**/*.ts',
-    '**/?(*.)+(spec|test).ts'
-  ],
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.d.ts',
-    '!src/**/*.test.ts',
-    '!src/**/*.spec.ts'
-  ],
-  coverageDirectory: 'coverage',
-  coverageReporters: ['text', 'lcov', 'html'],
+  testMatch: ['**/__tests__/**/*.test.ts', '**/?(*.)+(spec|test).ts'],
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
-  moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1'
-  },
-  extensionsToTreatAsEsm: ['.ts'],
+
+  // Transform TypeScript files with ts-jest and provide ts-jest options inline.
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', { useESM: true }],
-    '^.+\\.js$': ['ts-jest', { useESM: true, tsconfig: { allowJs: true } }]
+    '^.+\\.(ts|tsx)$': [
+      'ts-jest',
+      {
+        tsconfig: '<rootDir>/tsconfig.json',
+        isolatedModules: true,
+        useESM: true,
+        diagnostics: false
+      }
+    ]
   },
-  transformIgnorePatterns: ['node_modules/(?!(?:@noble|@scure)/)']
+
+  // Allow transforming ESM-only node_modules packages such as @noble and node-fetch.
+  // Add additional modules if other ESM-only deps show up in errors.
+  transformIgnorePatterns: [
+    'node_modules/(?!(?:@noble|node-fetch|@scure|@walletadapter)/)'
+  ],
+
+  // Some ESM packages use named exports — enable these extensions to be treated as ESM
+  extensionsToTreatAsEsm: ['.ts'],
+
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+
+  // If you still see issues with node-fetch import paths, you can map the package:
+  // moduleNameMapper: { '^node-fetch$': 'node-fetch' },
+
+  // Jest + ts-jest runtime options (now in transform entry; keep globals minimal)
+  globals: {}
 };
