@@ -232,6 +232,34 @@ export class ValidationError extends OmneSDKError {
 }
 
 /**
+ * Guardrail enforcement errors for deployment workflows
+ */
+export class GuardrailError extends OmneSDKError {
+  public readonly allowed?: string[];
+  public readonly serviceId?: string;
+
+  constructor(message: string, details?: Record<string, any>) {
+    super(message, 'GUARDRAIL_ERROR', details);
+    this.name = 'GuardrailError';
+    this.allowed = details?.allowed;
+    this.serviceId = details?.serviceId;
+  }
+
+  static serviceNotAllowed(serviceId: string, allowed: string[]): GuardrailError {
+    return new GuardrailError(`Service '${serviceId}' is not in the allow-list`, {
+      serviceId,
+      allowed
+    });
+  }
+
+  static duplicateService(serviceId: string): GuardrailError {
+    return new GuardrailError(`Duplicate service identifier '${serviceId}' detected`, {
+      serviceId
+    });
+  }
+}
+
+/**
  * Wallet and cryptographic operation errors
  */
 export class WalletError extends OmneSDKError {

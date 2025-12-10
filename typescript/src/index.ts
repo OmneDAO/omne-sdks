@@ -21,6 +21,7 @@ export {
   TransactionError,
   ValidationError,
   WalletError,
+  GuardrailError,
   RPCError
 } from './errors';
 
@@ -53,6 +54,15 @@ export {
   isNode,
   safeInt
 } from './utils';
+
+// Service registry helpers
+export {
+  fetchServiceRegistrySnapshotFromUrl,
+  normalizeServiceRegistrySnapshot,
+  normalizeServiceRegistryEntry,
+  canonicalServiceId,
+  enforceAllowedServices
+} from './service-registry';
 
 // SDK version and metadata
 export const SDK_VERSION = '0.1.0';
