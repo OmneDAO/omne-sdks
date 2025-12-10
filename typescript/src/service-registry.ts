@@ -88,7 +88,7 @@ export function normalizeServiceRegistrySnapshot(payload: any): ServiceRegistryS
   const entriesRaw = Array.isArray(payload?.entries) ? payload.entries : [];
   const entries = entriesRaw
     .map(normalizeServiceRegistryEntry)
-    .filter(entry => entry.serviceId.length > 0 && entry.baseUrl.length > 0);
+    .filter((entry: ServiceRegistryEntry) => entry.serviceId.length > 0 && entry.baseUrl.length > 0);
 
   return {
     version,
