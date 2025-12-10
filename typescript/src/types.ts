@@ -54,6 +54,22 @@ export interface NetworkInfo {
   features: NetworkFeatures;
 }
 
+export interface ServiceRegistryEntry {
+  serviceId: string;
+  baseUrl: string;
+  planFingerprint?: string;
+  certificateFingerprint?: string;
+  authScope?: string;
+  metadata?: Record<string, any>;
+  signature?: string;
+}
+
+export interface ServiceRegistrySnapshot {
+  version: number;
+  root: string;
+  entries: ServiceRegistryEntry[];
+}
+
 /**
  * Account balance information
  */

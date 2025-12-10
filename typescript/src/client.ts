@@ -24,8 +24,10 @@ import {
   TransactionPriority,
   DynamicStakeInfo,
   FeeEstimation,
-  ValidatorPerformance
+  ValidatorPerformance,
+  ServiceRegistrySnapshot
 } from './types';
+import { normalizeServiceRegistrySnapshot } from './service-registry';
 import { 
   NetworkError, 
   RPCError, 
@@ -239,6 +241,14 @@ export class OmneClient {
    */
   async getNetworkInfo(): Promise<NetworkInfo> {
     return await this.request('omne_networkInfo');
+  }
+
+  /**
+   * Fetch the hardened service registry snapshot.
+   */
+  async getServiceRegistry(): Promise<ServiceRegistrySnapshot> {
+    const result = await this.request<any>('omne_getServiceRegistry', []);
+    return normalizeServiceRegistrySnapshot(result);
   }
 
   /**
