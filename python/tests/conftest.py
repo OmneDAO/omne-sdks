@@ -1,1 +1,0 @@
-"""Test-specific configuration is centralized in the parent conftest."""
