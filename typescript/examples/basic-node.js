@@ -5,7 +5,8 @@
  * and reading latest block metrics for investor materials.
  */
 
-const { Wallet, toQuar, fromQuar } = require('../dist/index.cjs.js');
+const { promises: fs } = require('fs');
+const { Wallet, toQuar, fromQuar, ensureSignedCompilerAttachment, buildDeploymentHeaders } = require('../dist/index.cjs.js');
 
 async function main() {
   const rpcUrl = process.env.OMNE_RPC_URL || 'http://127.0.0.1:8545';
@@ -67,6 +68,58 @@ async function main() {
       ? latestBlock.transactions.length
       : latestBlock.transactionCount ?? 0;
     console.log('  Tx count:', txCount);
+
+    const planPath = process.env.OMNE_EXECUTION_PLAN;
+    if (!planPath) {
+      console.log('\n🛡️ Hardened deployment: set OMNE_EXECUTION_PLAN and OMNE_AUTH_TOKEN to submit a plan via the secure endpoint.');
+    } else {
+      const deploymentUrl = process.env.OMNE_DEPLOYMENT_URL;
+      if (!deploymentUrl) {
+        console.log('\n🛡️ Hardened deployment skipped - set OMNE_DEPLOYMENT_URL with the /v1/deployments endpoint.');
+      } else {
+        try {
+          const rawPlan = await fs.readFile(planPath, 'utf8');
+          const plan = JSON.parse(rawPlan);
+          ensureSignedCompilerAttachment(plan);
+
+          const nonce = plan.contract?.deployment_nonce;
+          if (!nonce) {
+            throw new Error('Execution plan is missing contract.deployment_nonce');
+          }
+
+          const headers = buildDeploymentHeaders({
+            nonce,
+            authToken: process.env.OMNE_AUTH_TOKEN,
+          });
+          headers['Content-Type'] = 'application/json';
+
+          console.log(`\n🛡️ Submitting hardened deployment to ${deploymentUrl} (nonce ${nonce})`);
+          const response = await fetch(deploymentUrl, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(plan)
+          });
+
+          const text = await response.text();
+          const payload = text ? JSON.parse(text) : {};
+
+          if (response.status === 202) {
+            console.log('  ✅ Submission accepted');
+            console.log('  Plan ID:', payload.plan_id);
+            console.log('  Digest:', payload.digest);
+            console.log('  Signer:', payload.signer);
+            if (payload.compiler_signer) {
+              console.log('  Compiler signer:', payload.compiler_signer);
+            }
+            console.log('  Nonce provenance:', payload.nonce_provenance);
+          } else {
+            console.log('  ❌ Submission rejected:', payload.detail || response.statusText);
+          }
+        } catch (error) {
+          console.error('\n❌ Hardened deployment failed:', error);
+        }
+      }
+    }
   } catch (error) {
   console.error('❌ Demo failed:', error);
   }

@@ -4,15 +4,20 @@
  * Basic usage example for Omne TypeScript SDK
  * 
  * Demonstrates core functionality including wallet creation,
- * transactions, and quar-precision calculations.
+ * transactions, hardened deployment submissions, and quar-precision calculations.
  */
+
+import { promises as fs } from 'fs';
 
 import { 
   Wallet, 
   toQuar, 
   fromQuar, 
   formatBalance,
-  createClient 
+  createClient,
+  ensureSignedCompilerAttachment,
+  generateDeploymentNonce,
+  type DeploymentPlan
 } from '../src/index';
 
 async function basicUsageExample() {
@@ -124,6 +129,57 @@ async function basicUsageExample() {
   console.log('⚡ Async/Await: Modern JavaScript async patterns');
   console.log('🔒 Type Safety: Full TypeScript type definitions');
   console.log();
+
+  // 7. Hardened deployment submission flow
+  console.log('🛡️ Hardened Deployment Flow');
+  console.log('---------------------------');
+
+  const planPath = process.env.OMNE_EXECUTION_PLAN;
+  if (!planPath) {
+    console.log('Set OMNE_EXECUTION_PLAN to the path of a signed execution plan to submit via the hardened API.');
+    console.log('Example: OMNE_EXECUTION_PLAN=./demo.execution.json OMNE_AUTH_TOKEN=<token> ts-node examples/basic-usage.ts');
+    console.log();
+  } else {
+    try {
+      const rawPlan = await fs.readFile(planPath, 'utf8');
+      const plan = JSON.parse(rawPlan) as DeploymentPlan;
+
+      // Validate compiler attachment before submission
+      ensureSignedCompilerAttachment(plan);
+
+      const authToken = process.env.OMNE_AUTH_TOKEN;
+      if (!authToken) {
+        console.log('⚠️ OMNE_AUTH_TOKEN not set; submission will likely be rejected by the node.');
+      }
+
+      const preferredNonce = plan.contract?.deployment_nonce ?? generateDeploymentNonce();
+      if (!plan.contract?.deployment_nonce) {
+        plan.contract.deployment_nonce = preferredNonce;
+      }
+
+      console.log(`Submitting plan from ${planPath} (nonce ${preferredNonce})...`);
+      const submission = await client.deployExecutionPlan(plan, {
+        authToken: authToken ?? undefined,
+        nonce: preferredNonce,
+      });
+
+      console.log('✅ Hardened submission accepted');
+      console.log(`   Plan ID: ${submission.plan_id}`);
+      console.log(`   Digest: ${submission.digest}`);
+      console.log(`   Signer: ${submission.signer}`);
+      if (submission.compiler_signer) {
+        console.log(`   Compiler signer: ${submission.compiler_signer}`);
+      }
+      console.log(`   Nonce provenance: ${submission.nonce_provenance}`);
+      console.log(`   Submitted at: ${submission.submitted_at}`);
+      console.log();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log('⚠️ Hardened submission failed');
+      console.log(`   Reason: ${message}`);
+      console.log();
+    }
+  }
 
   console.log('🎉 Omne TypeScript SDK demonstration complete!');
   

@@ -5,6 +5,58 @@
 import { generateSecureRandom } from './secure-crypto';
 import { hexToBuffer } from './utils';
 
+export interface DeploymentHeaderOptions {
+  nonce?: string;
+  authToken?: string;
+  headers?: SecurityHeaders;
+  extra?: Record<string, string>;
+}
+
+export function generateDeploymentNonce(): string {
+  return generateSecureRandom(16);
+}
+
+export function normaliseBearerToken(token?: string): string | undefined {
+  if (!token) {
+    return undefined;
+  }
+
+  const trimmed = token.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const bearerMatch = trimmed.match(/^bearer\s+(.+)$/i);
+  if (bearerMatch) {
+    return `Bearer ${bearerMatch[1].trim()}`;
+  }
+
+  return `Bearer ${trimmed}`;
+}
+
+export function buildDeploymentHeaders(options: DeploymentHeaderOptions): SecurityHeaders {
+  const nonce = options.nonce ?? generateDeploymentNonce();
+
+  const base: SecurityHeaders = {
+    'X-Omne-Nonce': nonce,
+  };
+
+  const normalisedToken = normaliseBearerToken(options.authToken);
+  if (normalisedToken) {
+    base['Authorization'] = normalisedToken;
+  }
+
+  if (options.headers) {
+    Object.assign(base, options.headers);
+  }
+
+  if (options.extra) {
+    Object.assign(base, options.extra);
+  }
+
+  return base;
+}
+
 export class SecureRequestManager {
   private requestCounter: number = 0;
 

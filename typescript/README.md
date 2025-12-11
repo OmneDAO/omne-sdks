@@ -199,6 +199,23 @@ await subscription.unsubscribe();
 | Testum | 1 | Public testnet | `wss://testnet.omne.org` |
 | Principalis | 42 | Mainnet | `wss://mainnet.omne.org` |
 
+## Runtime Snapshot Verification
+
+The SDK ships with the golden runtime manifest generated from the `runtime-golden`
+test harness. Use the bundled CLI to confirm that a compiled WASM module matches the
+recorded snapshot:
+
+```bash
+# Inspect the available fixture slugs
+npx omne-sdk-verify-runtime --list
+
+# Verify a module against the canonical hash
+npx omne-sdk-verify-runtime --artifact path/to/module.wasm --slug entry_constant_main
+```
+
+Pass `--json` to emit machine-readable output or `--manifest` to point at a custom
+manifest file generated from a different commit.
+
 ### Custom Network
 
 ```typescript

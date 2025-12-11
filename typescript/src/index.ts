@@ -9,6 +9,7 @@ import { OmneClient } from './client';
 
 // Core client and wallet exports
 export { OmneClient } from './client';
+export type { DeploymentRequestOptions } from './client';
 export { Wallet, WalletAccount, WalletManager } from './wallet';
 
 // Type definitions (interfaces and types only)
@@ -54,6 +55,21 @@ export {
   isNode,
   safeInt
 } from './utils';
+
+export {
+  generateDeploymentNonce,
+  buildDeploymentHeaders,
+  normaliseBearerToken,
+} from './secure-client';
+
+export {
+  ensureSignedCompilerAttachment,
+  type CompilerAttachment,
+  type CompilerMetadata,
+  type CompilerMetadataSignature,
+  type DeploymentPlan,
+  type DeploymentSubmissionResponse,
+} from './signer';
 
 // Service registry helpers
 export {
