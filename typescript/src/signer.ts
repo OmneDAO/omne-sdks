@@ -98,11 +98,34 @@ export interface DeploymentPlanNetwork {
   explorer_url: string;
 }
 
+export interface HardenedExecutionConfig {
+  function_name?: string;
+  arguments?: unknown[];
+  gas_limit: number;
+  timeout?: {
+    secs: number;
+    nanos: number;
+  };
+  max_call_depth?: number;
+  storage_budget_bytes?: number;
+  [key: string]: unknown;
+}
+
+export interface ExecutionPreviewSummary {
+  execution_time_ms?: number;
+  gas_consumed?: number;
+  return_value?: unknown;
+  deterministic_state?: string;
+  call_depth_used?: number;
+  storage_bytes_written?: number;
+  [key: string]: unknown;
+}
+
 export interface DeploymentPlanExecution {
   tier: string;
-  config: Record<string, any>;
+  config: HardenedExecutionConfig;
   preview?: Record<string, any> | null;
-  preview_summary?: Record<string, any> | null;
+  preview_summary?: ExecutionPreviewSummary | null;
 }
 
 export interface DeploymentPlanSignature {

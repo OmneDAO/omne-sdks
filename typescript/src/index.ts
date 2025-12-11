@@ -67,9 +67,19 @@ export {
   type CompilerAttachment,
   type CompilerMetadata,
   type CompilerMetadataSignature,
+  type HardenedExecutionConfig,
+  type ExecutionPreviewSummary,
   type DeploymentPlan,
   type DeploymentSubmissionResponse,
 } from './signer';
+
+export {
+  assertRuntimeGuardrails,
+  runtimeGuardrailsForTier,
+  RUNTIME_GUARDRAILS,
+  type RuntimeGuardrails,
+  type RuntimeTier,
+} from './runtime-guardrails';
 
 // Service registry helpers
 export {

@@ -102,6 +102,36 @@ describe('OmneClient.deployExecutionPlan', () => {
 
     await expect(client.deployExecutionPlan(plan)).rejects.toThrow(GuardrailError);
   });
+
+  test('rejects execution plans that exceed runtime guardrails', async () => {
+    const plan = makePlan();
+    plan.execution.config.max_call_depth = 10_000;
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    await expect(client.deployExecutionPlan(plan)).rejects.toThrow(GuardrailError);
+  });
+
+  test('rejects plans when preview metrics exceed runtime guardrails', async () => {
+    const plan = makePlan();
+    plan.execution.preview_summary = {
+      execution_time_ms: 120,
+      gas_consumed: 10_000,
+      call_depth_used: 512,
+      storage_bytes_written: 2 * 512 * 1024,
+      deterministic_state: 'over-limit',
+    };
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    await expect(client.deployExecutionPlan(plan)).rejects.toThrow(GuardrailError);
+  });
+
+  test('requires guardrail fields to be present', async () => {
+    const plan = makePlan();
+    delete (plan.execution.config as any).max_call_depth;
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    await expect(client.deployExecutionPlan(plan)).rejects.toThrow(GuardrailError);
+  });
 });
 
 function makePlan(): DeploymentPlan {
@@ -161,7 +191,12 @@ function makePlan(): DeploymentPlan {
     execution: {
       tier: 'standard',
       config: {
+        function_name: 'axiom_entry_main',
+        arguments: [],
         gas_limit: 100000,
+        timeout: { secs: 3, nanos: 0 },
+        max_call_depth: 128,
+        storage_budget_bytes: 512 * 1024,
       },
       preview: null,
       preview_summary: null,
