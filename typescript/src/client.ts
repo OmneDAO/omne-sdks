@@ -59,6 +59,7 @@ import {
   DeploymentSubmissionResponse,
   ensureSignedCompilerAttachment
 } from './signer';
+import { assertRuntimeGuardrails } from './runtime-guardrails';
 
 let cachedFetch: typeof fetch | null = null;
 let fetchPromise: Promise<typeof fetch> | null = null;
@@ -298,6 +299,12 @@ export class OmneClient {
     options: DeploymentRequestOptions = {}
   ): Promise<DeploymentSubmissionResponse> {
     ensureSignedCompilerAttachment(plan);
+
+    assertRuntimeGuardrails(
+      plan.execution.tier,
+      plan.execution.config ?? {},
+      plan.execution.preview_summary ?? null
+    );
 
     const planNonce = plan.contract?.deployment_nonce;
     if (!planNonce && !options.nonce) {
