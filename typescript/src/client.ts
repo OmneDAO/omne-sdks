@@ -32,7 +32,8 @@ import {
   NetworkError, 
   RPCError, 
   TransactionError, 
-  ValidationError
+  ValidationError,
+  GuardrailError
 } from './errors';
 import { 
   generateRequestId, 
@@ -48,8 +49,16 @@ import {
 } from './utils';
 import { 
   SecureRequestManager, 
-  RateLimiter
+  RateLimiter,
+  buildDeploymentHeaders,
+  generateDeploymentNonce
 } from './secure-client';
+import {
+  DeploymentErrorResponse,
+  DeploymentPlan,
+  DeploymentSubmissionResponse,
+  ensureSignedCompilerAttachment
+} from './signer';
 
 let cachedFetch: typeof fetch | null = null;
 let fetchPromise: Promise<typeof fetch> | null = null;
@@ -98,6 +107,45 @@ async function resolveFetch(): Promise<typeof fetch> {
   }
 
   throw new NetworkError('Global fetch is not available. Provide a fetch polyfill when running outside browser environments.');
+}
+
+interface ResolvedClientConfig {
+  url: string;
+  deploymentUrl: string;
+  timeout: number;
+  retries: number;
+  retryDelay: number;
+  headers: Record<string, string>;
+  authToken?: string;
+  nonceFactory: () => string;
+}
+
+export interface DeploymentRequestOptions {
+  authToken?: string;
+  nonce?: string;
+  headers?: Record<string, string>;
+}
+
+function deriveDeploymentUrl(baseUrl: string, explicit?: string): string {
+  if (explicit) {
+    return explicit;
+  }
+
+  try {
+    const parsed = new URL(baseUrl);
+    let protocol = parsed.protocol;
+    if (protocol === 'ws:') {
+      protocol = 'http:';
+    } else if (protocol === 'wss:') {
+      protocol = 'https:';
+    }
+
+    const origin = `${protocol}//${parsed.host}`;
+    const resolved = new URL('/v1/deployments', origin);
+    return resolved.toString();
+  } catch {
+    return baseUrl;
+  }
 }
 
 function normalizeAddressToHex(address: string): string {
@@ -157,7 +205,7 @@ function parseRpcNumber(value: unknown): number {
  * Main Omne blockchain client
  */
 export class OmneClient {
-  private config: Required<ClientConfig>;
+  private config: ResolvedClientConfig;
   private ws?: any; // Universal WebSocket type
   private isConnected: boolean = false;
   private secureRequestManager: SecureRequestManager;
@@ -175,18 +223,24 @@ export class OmneClient {
     if (typeof config === 'string') {
       this.config = {
         url: config,
-        timeout: 30000,
-        retries: 3,
-        retryDelay: 1000,
-        headers: {}
-      };
-    } else {
-      this.config = {
+        deploymentUrl: deriveDeploymentUrl(config),
         timeout: 30000,
         retries: 3,
         retryDelay: 1000,
         headers: {},
-        ...config
+        nonceFactory: generateDeploymentNonce,
+      };
+    } else {
+      const resolvedUrl = config.url;
+      this.config = {
+        url: resolvedUrl,
+        deploymentUrl: deriveDeploymentUrl(resolvedUrl, config.deploymentUrl),
+        timeout: config.timeout ?? 30000,
+        retries: config.retries ?? 3,
+        retryDelay: config.retryDelay ?? 1000,
+        headers: config.headers ?? {},
+        authToken: config.authToken,
+        nonceFactory: config.nonceFactory ?? generateDeploymentNonce,
       };
     }
 
@@ -234,6 +288,133 @@ export class OmneClient {
       request.reject(new NetworkError('Client disconnected'));
     }
     this.pendingRequests.clear();
+  }
+
+  /**
+   * Submit a hardened execution plan to the deployment API.
+   */
+  async deployExecutionPlan(
+    plan: DeploymentPlan,
+    options: DeploymentRequestOptions = {}
+  ): Promise<DeploymentSubmissionResponse> {
+    ensureSignedCompilerAttachment(plan);
+
+    const planNonce = plan.contract?.deployment_nonce;
+    if (!planNonce && !options.nonce) {
+      throw new GuardrailError('Execution plan is missing the deployment nonce field', {
+        reason: 'deployment_nonce_missing',
+      });
+    }
+
+    const nonce = options.nonce ?? planNonce ?? this.config.nonceFactory();
+    const authToken = options.authToken ?? this.config.authToken;
+    const headerOverrides = {
+      ...this.config.headers,
+      ...(options.headers ?? {}),
+    };
+
+    const headers = buildDeploymentHeaders({
+      nonce,
+      authToken,
+      headers: headerOverrides,
+    });
+
+    if (!headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    const fetchFn = await resolveFetch();
+    const response = await fetchFn(this.config.deploymentUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(plan),
+    });
+
+    const contentType = response.headers.get('content-type') ?? '';
+    let payload: any = undefined;
+
+    if (contentType.includes('application/json')) {
+      try {
+        payload = await response.json();
+      } catch {
+        payload = undefined;
+      }
+    } else if (contentType) {
+      payload = await response.text();
+    }
+
+    if (response.status === 202) {
+      if (!payload || typeof payload !== 'object') {
+        throw new NetworkError('Deployment endpoint returned malformed response payload', response.status, payload, {
+          url: this.config.deploymentUrl,
+        });
+      }
+      return payload as DeploymentSubmissionResponse;
+    }
+
+    const errorDetail =
+      typeof payload === 'object' && payload !== null ? (payload as DeploymentErrorResponse).detail : undefined;
+
+    if (response.status === 429) {
+      const retryAfter =
+        typeof payload === 'object' && payload !== null
+          ? (payload as DeploymentErrorResponse).retry_after_seconds
+          : undefined;
+      const message = retryAfter
+        ? `Deployment rejected: rate limit exceeded. Retry after ${retryAfter}s or request a higher limit.`
+        : 'Deployment rejected: rate limit exceeded. Retry later or request a higher limit.';
+      throw new GuardrailError(message, {
+        statusCode: response.status,
+        retry_after_seconds: retryAfter,
+        response: payload,
+      });
+    }
+
+    if (response.status === 403) {
+      const message = errorDetail
+        ? `Deployment rejected: access forbidden (${errorDetail}). Verify authentication token and permissions.`
+        : 'Deployment rejected: access forbidden. Verify authentication token and permissions.';
+      throw new GuardrailError(message, {
+        statusCode: response.status,
+        response: payload,
+      });
+    }
+
+    if (response.status === 401) {
+      const message = errorDetail
+        ? `Deployment rejected: ${errorDetail}`
+        : 'Deployment rejected: authentication token missing or invalid.';
+      throw new GuardrailError(message, {
+        statusCode: response.status,
+        response: payload,
+      });
+    }
+
+    if (response.status === 409) {
+      throw new GuardrailError('Deployment rejected: duplicate nonce detected. Generate a new plan and retry.', {
+        statusCode: response.status,
+        response: payload,
+      });
+    }
+
+    if (response.status === 400) {
+      const message = errorDetail
+        ? `Deployment rejected: ${errorDetail}`
+        : 'Deployment rejected: invalid submission payload.';
+      throw new GuardrailError(message, {
+        statusCode: response.status,
+        response: payload,
+      });
+    }
+
+    if (response.status === 501) {
+      throw new GuardrailError('Deployment API is not enabled on this node.', {
+        statusCode: response.status,
+        response: payload,
+      });
+    }
+
+    throw NetworkError.fromResponse(response, payload);
   }
 
   /**

@@ -405,6 +405,9 @@ export interface ClientConfig {
   retries?: number;         // Number of retry attempts
   retryDelay?: number;      // Delay between retries in milliseconds
   headers?: Record<string, string>;
+  deploymentUrl?: string;   // Explicit deployment API endpoint
+  authToken?: string;       // Optional bearer token for hardened routes
+  nonceFactory?: () => string; // Custom nonce generator for deployments
 }
 
 /**
