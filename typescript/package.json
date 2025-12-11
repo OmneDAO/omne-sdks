@@ -11,8 +11,13 @@
     "README.md",
     "LICENSE"
   ],
+  "bin": {
+    "omne-sdk-verify-runtime": "dist/cli/verify-runtime.cjs"
+  },
   "scripts": {
+    "prebuild": "npm run sync:runtime-manifest",
     "build": "rollup -c",
+    "postbuild": "node scripts/copy-runtime-manifest.js",
     "build:watch": "rollup -c -w",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -22,7 +27,8 @@
     "docs": "typedoc src/index.ts",
     "clean": "rimraf dist",
     "prepublishOnly": "npm run clean && npm run build",
-    "demo": "node examples/basic-usage.js"
+    "demo": "node examples/basic-usage.js",
+    "sync:runtime-manifest": "node scripts/sync-runtime-manifest.js"
   },
   "keywords": [
     "omne",

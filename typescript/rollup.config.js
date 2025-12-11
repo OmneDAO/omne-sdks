@@ -75,5 +75,24 @@ module.exports = [
       commonjs()
     ],
     external: ['ws', 'node-fetch']
+  },
+  // CLI build for runtime verification tooling
+  {
+    input: 'src/cli/verify-runtime.ts',
+    output: {
+      file: 'dist/cli/verify-runtime.cjs',
+      format: 'cjs',
+      sourcemap: true,
+      banner: '#!/usr/bin/env node'
+    },
+    plugins: [
+      json(),
+      createTsPlugin(),
+      resolve({
+        preferBuiltins: true
+      }),
+      commonjs()
+    ],
+    external: ['crypto', 'fs', 'path']
   }
 ];
