@@ -51,26 +51,34 @@ import {
   SecureRequestManager, 
   RateLimiter,
   buildDeploymentHeaders,
-  generateDeploymentNonce
+  generateDeploymentNonce,
+  normaliseBearerToken
 } from './secure-client';
 import {
   DeploymentErrorResponse,
   DeploymentPlan,
+  DeploymentPlanDetails,
+  DeploymentPlanList,
+  DeploymentPlanPagination,
+  DeploymentPlanSummary,
+  DeploymentNonceProvenance,
   DeploymentSubmissionResponse,
   ensureSignedCompilerAttachment
 } from './signer';
 import { assertRuntimeGuardrails } from './runtime-guardrails';
 
 let cachedFetch: typeof fetch | null = null;
+let cachedFetchSource: typeof globalThis.fetch | null = null;
 let fetchPromise: Promise<typeof fetch> | null = null;
 
 async function resolveFetch(): Promise<typeof fetch> {
-  if (cachedFetch) {
+  if (cachedFetch && cachedFetchSource === globalThis.fetch) {
     return cachedFetch;
   }
 
   if (typeof globalThis.fetch === 'function') {
     cachedFetch = globalThis.fetch.bind(globalThis);
+    cachedFetchSource = globalThis.fetch;
     return cachedFetch;
   }
 
@@ -87,9 +95,11 @@ async function resolveFetch(): Promise<typeof fetch> {
 
           const boundFetch = candidate.bind(globalThis) as typeof fetch;
           cachedFetch = boundFetch;
+          cachedFetchSource = null;
           return boundFetch;
         } catch (error) {
           cachedFetch = null;
+          cachedFetchSource = null;
           fetchPromise = null;
 
           throw new NetworkError(
@@ -119,12 +129,190 @@ interface ResolvedClientConfig {
   headers: Record<string, string>;
   authToken?: string;
   nonceFactory: () => string;
+  metadataBaseUrl: string;
 }
 
 export interface DeploymentRequestOptions {
   authToken?: string;
   nonce?: string;
   headers?: Record<string, string>;
+}
+
+export interface DeploymentPlanListQuery {
+  page?: number;
+  pageSize?: number;
+  network?: string;
+  operatorId?: string;
+  signerKey?: string;
+  service?: string;
+  digest?: string;
+}
+
+interface RawPlanSummary {
+  plan_id?: unknown;
+  network?: unknown;
+  operator_id?: unknown;
+  signer_key?: unknown;
+  compiler_signer?: unknown;
+  digest?: unknown;
+  services?: unknown;
+  deployment_nonce?: unknown;
+  submitted_at?: unknown;
+}
+
+interface RawPagination {
+  page?: unknown;
+  page_size?: unknown;
+  total?: unknown;
+  next_page?: unknown;
+}
+
+interface RawPlanList {
+  plans?: unknown;
+  pagination?: unknown;
+}
+
+interface RawPlanDetails {
+  plan?: unknown;
+  plan_body?: unknown;
+  submitted_at?: unknown;
+}
+
+interface RawNonceProvenance {
+  nonce_hash?: unknown;
+  plan_id?: unknown;
+  operator_id?: unknown;
+  signer_key?: unknown;
+  compiler_signer?: unknown;
+  digest?: unknown;
+  first_seen_at?: unknown;
+}
+
+function serializePlanListQuery(query: DeploymentPlanListQuery): Record<string, string> {
+  const params: Record<string, string> = {};
+
+  if (typeof query.page === 'number' && Number.isFinite(query.page)) {
+    params['page'] = Math.max(1, Math.trunc(query.page)).toString();
+  }
+
+  if (typeof query.pageSize === 'number' && Number.isFinite(query.pageSize)) {
+    params['page_size'] = Math.max(1, Math.trunc(query.pageSize)).toString();
+  }
+
+  const maybeSet = (key: string, value?: string) => {
+    if (value) {
+      const trimmed = value.trim();
+      if (trimmed) {
+        params[key] = trimmed;
+      }
+    }
+  };
+
+  maybeSet('network', query.network);
+  maybeSet('operator_id', query.operatorId);
+  maybeSet('signer_key', query.signerKey);
+  maybeSet('service', query.service);
+  maybeSet('digest', query.digest);
+
+  return params;
+}
+
+function normaliseString(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value === null || value === undefined) {
+    return fallback;
+  }
+  return String(value);
+}
+
+function normaliseOptionalString(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const str = normaliseString(value);
+  return str ? str : null;
+}
+
+function normaliseNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+  return fallback;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((entry) => typeof entry === 'string')
+    .map((entry) => entry as string);
+}
+
+function mapPlanSummary(raw: RawPlanSummary): DeploymentPlanSummary {
+  return {
+    planId: normaliseString(raw.plan_id),
+    network: normaliseString(raw.network),
+    operatorId: normaliseString(raw.operator_id),
+    signerKey: normaliseString(raw.signer_key),
+    compilerSigner: normaliseOptionalString(raw.compiler_signer),
+    digest: normaliseString(raw.digest),
+    services: toStringArray(raw.services),
+    deploymentNonce: normaliseString(raw.deployment_nonce),
+    submittedAt: normaliseString(raw.submitted_at),
+  };
+}
+
+function mapPagination(raw: RawPagination | unknown): DeploymentPlanPagination {
+  const pagination = (raw ?? {}) as RawPagination;
+  return {
+    page: Math.max(1, normaliseNumber(pagination.page, 1)),
+    pageSize: Math.max(1, normaliseNumber(pagination.page_size, 50)),
+    total: Math.max(0, normaliseNumber(pagination.total, 0)),
+    nextPage: normaliseOptionalString(pagination.next_page),
+  };
+}
+
+function mapPlanList(raw: RawPlanList | unknown): DeploymentPlanList {
+  const payload = (raw ?? {}) as RawPlanList;
+  const plansSource = Array.isArray(payload.plans) ? payload.plans : [];
+  const plans = plansSource.map((entry) => mapPlanSummary(entry as RawPlanSummary));
+  return {
+    plans,
+    pagination: mapPagination(payload.pagination),
+  };
+}
+
+function mapPlanDetails(raw: RawPlanDetails | unknown): DeploymentPlanDetails {
+  const payload = (raw ?? {}) as RawPlanDetails;
+  if (!payload.plan || typeof payload.plan !== 'object') {
+    throw new Error('Plan metadata response is missing plan summary');
+  }
+
+  return {
+    plan: mapPlanSummary(payload.plan as RawPlanSummary),
+    planBody: (payload.plan_body ?? {}) as DeploymentPlan,
+    submittedAt: normaliseString(payload.submitted_at),
+  };
+}
+
+function mapNonceProvenance(raw: RawNonceProvenance | unknown): DeploymentNonceProvenance {
+  const payload = (raw ?? {}) as RawNonceProvenance;
+  return {
+    nonceHash: normaliseString(payload.nonce_hash),
+    planId: normaliseString(payload.plan_id),
+    operatorId: normaliseString(payload.operator_id),
+    signerKey: normaliseString(payload.signer_key),
+    compilerSigner: normaliseOptionalString(payload.compiler_signer),
+    digest: normaliseString(payload.digest),
+    firstSeenAt: normaliseString(payload.first_seen_at),
+  };
 }
 
 function deriveDeploymentUrl(baseUrl: string, explicit?: string): string {
@@ -146,6 +334,25 @@ function deriveDeploymentUrl(baseUrl: string, explicit?: string): string {
     return resolved.toString();
   } catch {
     return baseUrl;
+  }
+}
+
+function deriveMetadataBaseUrl(deploymentUrl: string): string {
+  try {
+    const parsed = new URL(deploymentUrl);
+    const trimmed = parsed.pathname.replace(/\/+$/, '');
+    if (trimmed.endsWith('/deployments')) {
+      parsed.pathname = `${trimmed.slice(0, -'/deployments'.length)}/`;
+    } else {
+      parsed.pathname = trimmed ? `${trimmed.replace(/\/+$/, '')}/` : '/';
+    }
+    return parsed.toString();
+  } catch {
+    const withoutDeployments = deploymentUrl.replace(/\/deployments\/?$/, '/');
+    if (withoutDeployments.endsWith('/')) {
+      return withoutDeployments;
+    }
+    return `${withoutDeployments}/`;
   }
 }
 
@@ -222,26 +429,30 @@ export class OmneClient {
 
   constructor(config: string | ClientConfig) {
     if (typeof config === 'string') {
+      const deploymentUrl = deriveDeploymentUrl(config);
       this.config = {
         url: config,
-        deploymentUrl: deriveDeploymentUrl(config),
+        deploymentUrl,
         timeout: 30000,
         retries: 3,
         retryDelay: 1000,
         headers: {},
         nonceFactory: generateDeploymentNonce,
+        metadataBaseUrl: deriveMetadataBaseUrl(deploymentUrl),
       };
     } else {
       const resolvedUrl = config.url;
+      const deploymentUrl = deriveDeploymentUrl(resolvedUrl, config.deploymentUrl);
       this.config = {
         url: resolvedUrl,
-        deploymentUrl: deriveDeploymentUrl(resolvedUrl, config.deploymentUrl),
+        deploymentUrl,
         timeout: config.timeout ?? 30000,
         retries: config.retries ?? 3,
         retryDelay: config.retryDelay ?? 1000,
         headers: config.headers ?? {},
         authToken: config.authToken,
         nonceFactory: config.nonceFactory ?? generateDeploymentNonce,
+        metadataBaseUrl: deriveMetadataBaseUrl(deploymentUrl),
       };
     }
 
@@ -422,6 +633,179 @@ export class OmneClient {
     }
 
     throw NetworkError.fromResponse(response, payload);
+  }
+
+  async listDeploymentPlans(query: DeploymentPlanListQuery = {}): Promise<DeploymentPlanList> {
+    const parameters = serializePlanListQuery(query);
+    const { response, url } = await this.fetchMetadata('plans', parameters);
+    const payload = await this.parseJsonPayload(response);
+
+    if (response.status === 200) {
+      try {
+        return mapPlanList(payload);
+      } catch (error) {
+        throw new NetworkError(
+          'Deployment metadata endpoint returned malformed response payload',
+          response.status,
+          payload,
+          {
+            url,
+            originalError: error instanceof Error ? error.message : String(error),
+          }
+        );
+      }
+    }
+
+    if (response.status === 501) {
+      throw new GuardrailError('Deployment metadata endpoint is not enabled on this node.', {
+        statusCode: response.status,
+        url,
+      });
+    }
+
+    throw NetworkError.fromResponse(response, payload);
+  }
+
+  async getDeploymentPlan(planId: string): Promise<DeploymentPlanDetails | null> {
+    if (!planId || typeof planId !== 'string') {
+      throw new ValidationError('planId must be a non-empty string', 'planId', planId);
+    }
+
+    const { response, url } = await this.fetchMetadata(`plans/${encodeURIComponent(planId)}`);
+    const payload = await this.parseJsonPayload(response);
+
+    if (response.status === 200) {
+      try {
+        return mapPlanDetails(payload);
+      } catch (error) {
+        throw new NetworkError(
+          'Deployment metadata endpoint returned malformed response payload',
+          response.status,
+          payload,
+          {
+            url,
+            originalError: error instanceof Error ? error.message : String(error),
+          }
+        );
+      }
+    }
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (response.status === 501) {
+      throw new GuardrailError('Deployment metadata endpoint is not enabled on this node.', {
+        statusCode: response.status,
+        url,
+      });
+    }
+
+    throw NetworkError.fromResponse(response, payload);
+  }
+
+  async getNonceProvenance(nonceHash: string): Promise<DeploymentNonceProvenance | null> {
+    if (!nonceHash || typeof nonceHash !== 'string') {
+      throw new ValidationError('nonceHash must be a non-empty string', 'nonceHash', nonceHash);
+    }
+
+    const { response, url } = await this.fetchMetadata(`nonce/${encodeURIComponent(nonceHash)}`);
+    const payload = await this.parseJsonPayload(response);
+
+    if (response.status === 200) {
+      try {
+        return mapNonceProvenance(payload);
+      } catch (error) {
+        throw new NetworkError(
+          'Deployment metadata endpoint returned malformed response payload',
+          response.status,
+          payload,
+          {
+            url,
+            originalError: error instanceof Error ? error.message : String(error),
+          }
+        );
+      }
+    }
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (response.status === 501) {
+      throw new GuardrailError('Deployment metadata endpoint is not enabled on this node.', {
+        statusCode: response.status,
+        url,
+      });
+    }
+
+    throw NetworkError.fromResponse(response, payload);
+  }
+
+  private async fetchMetadata(
+    path: string,
+    query?: Record<string, string>
+  ): Promise<{ response: Response; url: string }> {
+    const fetchFn = await resolveFetch();
+    const requestUrl = this.buildMetadataUrl(path, query);
+    const headers = this.buildMetadataHeaders();
+
+    const response = await fetchFn(requestUrl, {
+      method: 'GET',
+      headers,
+    });
+
+    return { response, url: requestUrl };
+  }
+
+  private buildMetadataUrl(path: string, query?: Record<string, string>): string {
+    const base = this.config.metadataBaseUrl;
+    const normalisedPath = path.startsWith('/') ? path.slice(1) : path;
+
+    try {
+      const url = new URL(normalisedPath, base);
+      if (query) {
+        for (const [key, value] of Object.entries(query)) {
+          if (value !== undefined) {
+            url.searchParams.set(key, value);
+          }
+        }
+      }
+      return url.toString();
+    } catch {
+      let prefix = base.endsWith('/') ? base : `${base}/`;
+      let fullPath = `${prefix}${normalisedPath}`;
+      if (query && Object.keys(query).length > 0) {
+        const params = new URLSearchParams(query);
+        fullPath = `${fullPath}?${params.toString()}`;
+      }
+      return fullPath;
+    }
+  }
+
+  private buildMetadataHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { ...this.config.headers };
+    const authToken = this.config.authToken;
+    if (authToken && !headers['Authorization']) {
+      const normalised = normaliseBearerToken(authToken);
+      if (normalised) {
+        headers['Authorization'] = normalised;
+      }
+    }
+    return headers;
+  }
+
+  private async parseJsonPayload(response: Response): Promise<any> {
+    const contentType = response.headers.get('content-type') ?? '';
+    if (!contentType.includes('application/json')) {
+      return undefined;
+    }
+
+    try {
+      return await response.json();
+    } catch {
+      return undefined;
+    }
   }
 
   /**
