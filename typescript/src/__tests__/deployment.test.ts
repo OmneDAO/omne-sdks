@@ -216,6 +216,42 @@ describe('OmneClient metadata endpoints', () => {
     expect(result).toBeNull();
   });
 
+  test('fetches deployment plan by digest', async () => {
+    const payload = {
+      plan: {
+        plan_id: 'pln_alpha',
+        network: 'testnet',
+        operator_id: 'operator-7',
+        signer_key: 'signer',
+        compiler_signer: null,
+        digest: 'digest123',
+        services: ['alpha'],
+        deployment_nonce: 'nonce_x',
+        submitted_at: '2024-01-01T00:00:00.000Z',
+      },
+      plan_body: {
+        services: [],
+      },
+      submitted_at: '2024-01-01T00:00:00.000Z',
+    };
+
+    const response = new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    (globalThis as any).fetch = jest.fn(async (input: RequestInfo) => {
+      const url = new URL(String(input));
+      expect(url.pathname.endsWith('/v1/plans/digest/digest123')).toBe(true);
+      return response.clone();
+    });
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    const result = await client.getDeploymentPlanByDigest('digest123');
+
+    expect(result?.plan.digest).toBe('digest123');
+  });
+
   test('throws guardrail error when metadata endpoint disabled', async () => {
     const response = new Response('', {
       status: 501,
@@ -246,7 +282,7 @@ describe('OmneClient metadata endpoints', () => {
 
     (globalThis as any).fetch = jest.fn(async (input: RequestInfo) => {
       const url = new URL(String(input));
-      expect(url.pathname.endsWith('/v1/nonce/hash_1')).toBe(true);
+      expect(url.pathname.endsWith('/v1/provenance/hash_1')).toBe(true);
       return response.clone();
     });
 

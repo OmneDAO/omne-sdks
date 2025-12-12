@@ -57,6 +57,34 @@ console.log('Chain ID:', networkInfo.chainId);
 console.log('Latest block:', networkInfo.latestBlock);
 ```
 
+### Deployment Metadata APIs
+
+The SDK can query the hardened deployment metadata service that Phase 3 introduced on the node. These helpers use the same base URL as hardened deployments by default (`/v1/plans`, `/v1/provenance`, etc.) and automatically include bearer tokens when configured.
+
+```typescript
+import { OmneClient } from '@omne/sdk';
+
+const client = new OmneClient({
+  url: 'https://testnet-rpc.omne.network',
+  // Optional: override when metadata is hosted separately
+  // metadataBaseUrl: 'https://metadata.omne.network/v1/',
+  authToken: process.env.OMNE_AUTH_TOKEN,
+});
+
+// List recorded deployment plans
+const plans = await client.listDeploymentPlans({ pageSize: 10, network: 'testnet' });
+plans.plans.forEach((plan) => {
+  console.log(plan.planId, plan.services);
+});
+
+// Fetch details by plan identifier or digest
+const plan = await client.getDeploymentPlan('pln_abcd1234');
+const digestCopy = await client.getDeploymentPlanByDigest(plan?.plan.digest ?? '');
+
+// Look up nonce provenance (SHA-256 hash of the deployment nonce)
+const provenance = await client.getNonceProvenance('f29c...');
+```
+
 ### Send Transaction
 
 ```typescript

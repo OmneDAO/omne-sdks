@@ -704,12 +704,50 @@ export class OmneClient {
     throw NetworkError.fromResponse(response, payload);
   }
 
+  async getDeploymentPlanByDigest(digest: string): Promise<DeploymentPlanDetails | null> {
+    if (!digest || typeof digest !== 'string') {
+      throw new ValidationError('digest must be a non-empty string', 'digest', digest);
+    }
+
+    const { response, url } = await this.fetchMetadata(`plans/digest/${encodeURIComponent(digest)}`);
+    const payload = await this.parseJsonPayload(response);
+
+    if (response.status === 200) {
+      try {
+        return mapPlanDetails(payload);
+      } catch (error) {
+        throw new NetworkError(
+          'Deployment metadata endpoint returned malformed response payload',
+          response.status,
+          payload,
+          {
+            url,
+            originalError: error instanceof Error ? error.message : String(error),
+          }
+        );
+      }
+    }
+
+    if (response.status === 404) {
+      return null;
+    }
+
+    if (response.status === 501) {
+      throw new GuardrailError('Deployment metadata endpoint is not enabled on this node.', {
+        statusCode: response.status,
+        url,
+      });
+    }
+
+    throw NetworkError.fromResponse(response, payload);
+  }
+
   async getNonceProvenance(nonceHash: string): Promise<DeploymentNonceProvenance | null> {
     if (!nonceHash || typeof nonceHash !== 'string') {
       throw new ValidationError('nonceHash must be a non-empty string', 'nonceHash', nonceHash);
     }
 
-    const { response, url } = await this.fetchMetadata(`nonce/${encodeURIComponent(nonceHash)}`);
+    const { response, url } = await this.fetchMetadata(`provenance/${encodeURIComponent(nonceHash)}`);
     const payload = await this.parseJsonPayload(response);
 
     if (response.status === 200) {
