@@ -160,6 +160,46 @@ export interface DeploymentErrorResponse {
   retry_after_seconds?: number;
 }
 
+export interface DeploymentPlanSummary {
+  planId: string;
+  network: string;
+  operatorId: string;
+  signerKey: string;
+  compilerSigner?: string | null;
+  digest: string;
+  services: string[];
+  deploymentNonce: string;
+  submittedAt: string;
+}
+
+export interface DeploymentPlanPagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  nextPage?: string | null;
+}
+
+export interface DeploymentPlanList {
+  plans: DeploymentPlanSummary[];
+  pagination: DeploymentPlanPagination;
+}
+
+export interface DeploymentPlanDetails {
+  plan: DeploymentPlanSummary;
+  planBody: DeploymentPlan;
+  submittedAt: string;
+}
+
+export interface DeploymentNonceProvenance {
+  nonceHash: string;
+  planId: string;
+  operatorId: string;
+  signerKey: string;
+  compilerSigner?: string | null;
+  digest: string;
+  firstSeenAt: string;
+}
+
 export function ensureSignedCompilerAttachment(plan: DeploymentPlan): CompilerAttachment {
   const metadata = plan.contract?.metadata;
   if (!metadata || !metadata.compiler) {

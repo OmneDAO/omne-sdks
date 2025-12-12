@@ -134,6 +134,130 @@ describe('OmneClient.deployExecutionPlan', () => {
   });
 });
 
+describe('OmneClient metadata endpoints', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    delete (globalThis as any).fetch;
+  });
+
+  test('lists deployment plans with query parameters', async () => {
+    const payload = {
+      plans: [
+        {
+          plan_id: 'plan_A',
+          network: 'testnet',
+          operator_id: 'operator_42',
+          signer_key: 'signer_hex',
+          compiler_signer: 'compiler_hex',
+          digest: 'digest_hex',
+          services: ['settlement'],
+          deployment_nonce: 'nonce_123',
+          submitted_at: '2024-01-01T00:00:00.000Z',
+        },
+      ],
+      pagination: {
+        page: 2,
+        page_size: 5,
+        total: 11,
+        next_page: '3',
+      },
+    };
+
+    const response = new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    const fetchMock = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = new URL(String(input));
+      expect(url.pathname.endsWith('/v1/plans')).toBe(true);
+      expect(url.searchParams.get('page')).toBe('2');
+      expect(url.searchParams.get('page_size')).toBe('5');
+      expect(url.searchParams.get('network')).toBe('testnet');
+      expect(url.searchParams.get('operator_id')).toBe('operator_42');
+      expect(init?.headers && (init.headers as Record<string, string>).Authorization).toBe('Bearer preset-token');
+      return response.clone();
+    });
+
+    (globalThis as any).fetch = fetchMock;
+
+    const client = new OmneClient({
+      url: 'http://127.0.0.1:8545',
+      deploymentUrl: 'http://127.0.0.1:8545/v1/deployments',
+      authToken: 'preset-token',
+    });
+
+    const result = await client.listDeploymentPlans({
+      page: 2,
+      pageSize: 5,
+      network: ' testnet ',
+      operatorId: 'operator_42',
+    });
+
+    expect(result.plans).toHaveLength(1);
+    expect(result.pagination.page).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('returns null when deployment plan is not found', async () => {
+    const response = new Response('', {
+      status: 404,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    (globalThis as any).fetch = jest.fn(async () => response.clone());
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    const result = await client.getDeploymentPlan('missing-plan');
+
+    expect(result).toBeNull();
+  });
+
+  test('throws guardrail error when metadata endpoint disabled', async () => {
+    const response = new Response('', {
+      status: 501,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    (globalThis as any).fetch = jest.fn(async () => response.clone());
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    await expect(client.listDeploymentPlans()).rejects.toThrow(GuardrailError);
+  });
+
+  test('fetches nonce provenance metadata', async () => {
+    const payload = {
+      nonce_hash: 'hash_1',
+      plan_id: 'plan_1',
+      operator_id: 'operator_1',
+      signer_key: 'signer_1',
+      compiler_signer: 'compiler_1',
+      digest: 'digest_1',
+      first_seen_at: '2024-01-01T00:00:00.000Z',
+    };
+
+    const response = new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+
+    (globalThis as any).fetch = jest.fn(async (input: RequestInfo) => {
+      const url = new URL(String(input));
+      expect(url.pathname.endsWith('/v1/nonce/hash_1')).toBe(true);
+      return response.clone();
+    });
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    const result = await client.getNonceProvenance('hash_1');
+
+    expect(result?.planId).toBe('plan_1');
+    expect(result?.nonceHash).toBe('hash_1');
+  });
+});
+
 function makePlan(): DeploymentPlan {
   const wasmSha = 'ab'.repeat(32);
   const verifyingKey = 'cd'.repeat(32);

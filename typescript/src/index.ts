@@ -9,7 +9,7 @@ import { OmneClient } from './client';
 
 // Core client and wallet exports
 export { OmneClient } from './client';
-export type { DeploymentRequestOptions } from './client';
+export type { DeploymentRequestOptions, DeploymentPlanListQuery } from './client';
 export { Wallet, WalletAccount, WalletManager } from './wallet';
 
 // Type definitions (interfaces and types only)
@@ -71,6 +71,11 @@ export {
   type ExecutionPreviewSummary,
   type DeploymentPlan,
   type DeploymentSubmissionResponse,
+  type DeploymentPlanSummary,
+  type DeploymentPlanList,
+  type DeploymentPlanDetails,
+  type DeploymentPlanPagination,
+  type DeploymentNonceProvenance,
 } from './signer';
 
 export {
