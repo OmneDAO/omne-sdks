@@ -5,8 +5,16 @@
  * and reading latest block metrics for investor materials.
  */
 
+const crypto = require('crypto');
 const { promises: fs } = require('fs');
-const { Wallet, toQuar, fromQuar, ensureSignedCompilerAttachment, buildDeploymentHeaders } = require('../dist/index.cjs.js');
+const {
+  Wallet,
+  toQuar,
+  fromQuar,
+  ensureSignedCompilerAttachment,
+  buildDeploymentHeaders,
+  OmneClient,
+} = require('../dist/index.cjs.js');
 
 async function main() {
   const rpcUrl = process.env.OMNE_RPC_URL || 'http://127.0.0.1:8545';
@@ -112,6 +120,34 @@ async function main() {
               console.log('  Compiler signer:', payload.compiler_signer);
             }
             console.log('  Nonce provenance:', payload.nonce_provenance);
+
+            try {
+              const sdkClient = new OmneClient({
+                url: rpcUrl,
+                deploymentUrl,
+                authToken: process.env.OMNE_AUTH_TOKEN,
+              });
+
+              if (payload.digest) {
+                const metadata = await sdkClient.getDeploymentPlanByDigest(payload.digest);
+                if (metadata) {
+                  const services = metadata.plan.services.length
+                    ? metadata.plan.services.join(', ')
+                    : 'None';
+                  console.log('  Metadata services:', services);
+                }
+              } else {
+                console.log('  Metadata lookup skipped: response missing digest field');
+              }
+
+              const nonceHash = crypto.createHash('sha256').update(nonce, 'utf8').digest('hex');
+              const provenance = await sdkClient.getNonceProvenance(nonceHash);
+              if (provenance) {
+                console.log('  Metadata nonce first seen:', provenance.firstSeenAt);
+              }
+            } catch (metaError) {
+              console.warn('  ⚠️ Metadata lookup failed:', metaError.message);
+            }
           } else {
             console.log('  ❌ Submission rejected:', payload.detail || response.statusText);
           }
