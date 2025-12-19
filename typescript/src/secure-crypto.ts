@@ -20,6 +20,7 @@ import {
   randomBytes as nobleRandomBytes,
   utf8ToBytes
 } from '@noble/hashes/utils';
+import { getPlatformProviders } from './platform/context';
 
 export interface SecureKeyDerivationOptions {
   algorithm?: 'pbkdf2' | 'scrypt';
@@ -72,48 +73,8 @@ function randomBytes(size: number): Uint8Array {
   return nobleRandomBytes(size);
 }
 
-/**
- * AES-CTR encrypt/decrypt helpers
- * Use aes-js via require (CJS) in Node tests, fallback to WebCrypto in browser.
- */
-async function aesCtrEncrypt(keyBytes: Uint8Array, ivBytes: Uint8Array, plaintext: Uint8Array): Promise<Uint8Array> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const aesjs = require('aes-js');
-    const counter = new aesjs.Counter(Array.from(ivBytes)); // aes-js Counter accepts an array
-    const aesCtr = new aesjs.ModeOfOperation.ctr(keyBytes, counter);
-    const encrypted = aesCtr.encrypt(plaintext);
-    return new Uint8Array(encrypted);
-  } catch {
-    if (typeof (globalThis as any).crypto !== 'undefined' && (globalThis as any).crypto.subtle) {
-      const subtle = (globalThis as any).crypto.subtle;
-      const cryptoKey = await subtle.importKey('raw', keyBytes, 'AES-CTR', false, ['encrypt']);
-      const algo = { name: 'AES-CTR', counter: ivBytes, length: 64 };
-      const encrypted = await subtle.encrypt(algo, cryptoKey, plaintext);
-      return new Uint8Array(encrypted);
-    }
-    throw new Error('No AES implementation available: install aes-js or run in an environment with WebCrypto.');
-  }
-}
-
-async function aesCtrDecrypt(keyBytes: Uint8Array, ivBytes: Uint8Array, ciphertext: Uint8Array): Promise<Uint8Array> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const aesjs = require('aes-js');
-    const counter = new aesjs.Counter(Array.from(ivBytes));
-    const aesCtr = new aesjs.ModeOfOperation.ctr(keyBytes, counter);
-    const decrypted = aesCtr.decrypt(ciphertext);
-    return new Uint8Array(decrypted);
-  } catch {
-    if (typeof (globalThis as any).crypto !== 'undefined' && (globalThis as any).crypto.subtle) {
-      const subtle = (globalThis as any).crypto.subtle;
-      const cryptoKey = await subtle.importKey('raw', keyBytes, 'AES-CTR', false, ['decrypt']);
-      const algo = { name: 'AES-CTR', counter: ivBytes, length: 64 };
-      const decrypted = await subtle.decrypt(algo, cryptoKey, ciphertext);
-      return new Uint8Array(decrypted);
-    }
-    throw new Error('No AES implementation available: install aes-js or run in an environment with WebCrypto.');
-  }
+function cryptoProvider() {
+  return getPlatformProviders().crypto;
 }
 
 export async function deriveKey(
@@ -168,7 +129,7 @@ export async function secureEncrypt(
     typeof data === 'string' ? hexToBytesSafe(data) : data instanceof Uint8Array ? data : new Uint8Array(data);
 
   // Encrypt with AES-CTR
-  const encrypted = await aesCtrEncrypt(derivedKey, iv, dataBytes);
+  const encrypted = await cryptoProvider().aesCtrEncrypt(derivedKey, iv, dataBytes);
 
   // Compute MAC: macKey = keccak(derivedKey || MAC_LABEL)
   const macKey = keccakHex(concatBytes(derivedKey, MAC_LABEL));
@@ -237,7 +198,7 @@ export async function secureDecrypt(
     throw new Error('Invalid password or corrupted keystore');
   }
 
-  const decrypted = await aesCtrDecrypt(derivedKey, ivBytes, encryptedBytes);
+  const decrypted = await cryptoProvider().aesCtrDecrypt(derivedKey, ivBytes, encryptedBytes);
 
   derivedKey.fill(0);
 

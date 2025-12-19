@@ -5,6 +5,7 @@
  * and other helper functions for Omne blockchain integration.
  */
 
+import { getPlatformProviders } from './platform/context';
 import Big from 'big.js';
 import { sha3_256 } from '@noble/hashes/sha3';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
@@ -397,14 +398,14 @@ export function parseRpcUrl(url: string): {
  * Check if running in browser environment
  */
 export function isBrowser(): boolean {
-  return typeof window !== 'undefined' && typeof window.document !== 'undefined';
+  return getPlatformProviders().env.isBrowser();
 }
 
 /**
  * Check if running in Node.js environment
  */
 export function isNode(): boolean {
-  return typeof process !== 'undefined' && process.versions != null && process.versions.node != null;
+  return getPlatformProviders().env.isNode();
 }
 
 /**

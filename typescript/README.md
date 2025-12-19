@@ -315,6 +315,62 @@ const wallet = Wallet.generate();
 </script>
 ```
 
+## Custom Platform Providers (React Native, Workers, etc.)
+
+`@omne/sdk` automatically installs Node-friendly or browser-friendly providers depending on which bundle you import (`main/module` for Node, `browser` field for web bundlers). If you run inside a different runtime (React Native, Cloudflare Workers, Electron preload, etc.) you can provide your own implementations via `setPlatformProviders`.
+
+```ts
+import { setPlatformProviders, type PlatformProviders } from '@omne/sdk';
+import fetch from 'cross-fetch';
+import WebSocket from 'isomorphic-ws';
+import { aesCtr } from './native-aes-ctr'; // your AES-CTR bridge
+
+const providers: PlatformProviders = {
+  fetch: {
+    async getFetch() {
+      return fetch as typeof globalThis.fetch;
+    }
+  },
+  webSocket: {
+    connect(url, handlers) {
+      const socket = new WebSocket(url);
+      socket.onopen = () => handlers.onOpen();
+      socket.onerror = (event: any) => handlers.onError(event);
+      socket.onclose = () => handlers.onClose();
+      socket.onmessage = (event: any) => handlers.onMessage(event.data?.toString?.() ?? '');
+      return {
+        send(data) {
+          socket.send(data);
+        },
+        close() {
+          socket.close();
+        }
+      };
+    }
+  },
+  crypto: {
+    async aesCtrEncrypt(keyBytes, ivBytes, plaintext) {
+      return aesCtr('encrypt', keyBytes, ivBytes, plaintext);
+    },
+    async aesCtrDecrypt(keyBytes, ivBytes, ciphertext) {
+      return aesCtr('decrypt', keyBytes, ivBytes, ciphertext);
+    }
+  },
+  env: {
+    isBrowser() {
+      return false; // React Native runtime
+    },
+    isNode() {
+      return false;
+    }
+  }
+};
+
+setPlatformProviders(providers);
+```
+
+Call `setPlatformProviders()` once, as early as possible (before creating `OmneClient`). You can mix and match—e.g., reuse the built-in browser fetch provider but override just the WebSocket layer when embedding inside Electron.
+
 ## Examples
 
 Check the `examples/` directory for complete usage examples:
