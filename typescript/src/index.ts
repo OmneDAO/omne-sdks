@@ -95,8 +95,11 @@ export {
   enforceAllowedServices
 } from './service-registry';
 
+export { setPlatformProviders } from './platform/context';
+export type { PlatformProviders } from './platform/providers';
+
 // SDK version and metadata
-export const SDK_VERSION = '0.1.0';
+export const SDK_VERSION = '0.2.0';
 export const SUPPORTED_NETWORKS = ['primum', 'testum', 'principalis'] as const;
 
 /**

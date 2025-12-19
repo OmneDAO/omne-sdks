@@ -18,7 +18,7 @@ const createTsPlugin = (options = {}) =>
 module.exports = [
   // CommonJS build for Node.js consumers
   {
-    input: 'src/index.ts',
+    input: 'src/index.node.ts',
     output: {
       file: 'dist/index.cjs.js',
       format: 'cjs',
@@ -36,7 +36,7 @@ module.exports = [
   },
   // Native ESM build for Node.js (tree-shake friendly)
   {
-    input: 'src/index.ts',
+    input: 'src/index.node.ts',
     output: {
       file: 'dist/index.esm.js',
       format: 'esm',
@@ -54,7 +54,7 @@ module.exports = [
   },
   // Browser-focused ESM build with polyfills
   {
-    input: 'src/index.ts',
+    input: 'src/index.browser.ts',
     output: {
       file: 'dist/index.browser.js',
       format: 'esm',

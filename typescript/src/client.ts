@@ -66,58 +66,34 @@ import {
   ensureSignedCompilerAttachment
 } from './signer';
 import { assertRuntimeGuardrails } from './runtime-guardrails';
-
-let cachedFetch: typeof fetch | null = null;
-let cachedFetchSource: typeof globalThis.fetch | null = null;
-let fetchPromise: Promise<typeof fetch> | null = null;
+import { getPlatformProviders } from './platform/context';
+import type { WebSocketConnection } from './platform/providers';
 
 async function resolveFetch(): Promise<typeof fetch> {
-  if (cachedFetch && cachedFetchSource === globalThis.fetch) {
-    return cachedFetch;
+  try {
+    return await getPlatformProviders().fetch.getFetch();
+  } catch (error) {
+    throw new NetworkError(
+      'Fetch implementation unavailable. Configure a fetch provider for this runtime.',
+      undefined,
+      undefined,
+      {
+        originalError: error instanceof Error ? error.message : String(error)
+      }
+    );
+  }
+}
+
+function toError(value: Error | Event | unknown): Error {
+  if (value instanceof Error) {
+    return value;
   }
 
-  if (typeof globalThis.fetch === 'function') {
-    cachedFetch = globalThis.fetch.bind(globalThis);
-    cachedFetchSource = globalThis.fetch;
-    return cachedFetch;
+  if (typeof value === 'string') {
+    return new Error(value);
   }
 
-  if (typeof process !== 'undefined' && process.release?.name === 'node') {
-    if (!fetchPromise) {
-      fetchPromise = (async () => {
-        try {
-          const mod: any = await import('node-fetch');
-          const candidate = mod?.default ?? mod;
-
-          if (typeof candidate !== 'function') {
-            throw new Error('node-fetch did not expose a fetch function');
-          }
-
-          const boundFetch = candidate.bind(globalThis) as typeof fetch;
-          cachedFetch = boundFetch;
-          cachedFetchSource = null;
-          return boundFetch;
-        } catch (error) {
-          cachedFetch = null;
-          cachedFetchSource = null;
-          fetchPromise = null;
-
-          throw new NetworkError(
-            'Global fetch is not available. Install node-fetch when running on Node.js < 18.',
-            undefined,
-            undefined,
-            {
-              originalError: error instanceof Error ? error.message : String(error)
-            }
-          );
-        }
-      })();
-    }
-
-    return fetchPromise!;
-  }
-
-  throw new NetworkError('Global fetch is not available. Provide a fetch polyfill when running outside browser environments.');
+  return new Error('WebSocket connection failed');
 }
 
 interface ResolvedClientConfig {
@@ -414,7 +390,7 @@ function parseRpcNumber(value: unknown): number {
  */
 export class OmneClient {
   private config: ResolvedClientConfig;
-  private ws?: any; // Universal WebSocket type
+  private ws?: WebSocketConnection;
   private isConnected: boolean = false;
   private secureRequestManager: SecureRequestManager;
   private rateLimiter: RateLimiter;
@@ -1172,60 +1148,32 @@ export class OmneClient {
   // Private methods
 
   private async connectWebSocket(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Use browser WebSocket or Node.js WebSocket based on environment
-      let WebSocketClass: any;
-      
-      if (typeof window !== 'undefined' && window.WebSocket) {
-        // Browser environment
-        WebSocketClass = window.WebSocket;
-      } else {
-        // Node.js environment
-        try {
-          WebSocketClass = require('ws');
-        } catch (error) {
-          throw new NetworkError('WebSocket not available in this environment');
-        }
-      }
-      
-      this.ws = new WebSocketClass(this.config.url);
-      
-      // Handle both browser and Node.js WebSocket APIs
-      const onOpen = () => {
-        this.isConnected = true;
-        this.reconnectAttempts = 0;
-        resolve();
-      };
+    return await new Promise((resolve, reject) => {
+      try {
+        let resolved = false;
 
-      const onError = (event: any) => {
-        if (!this.isConnected) {
-          reject(NetworkError.connectionFailed(this.config.url, event.error || new Error('WebSocket connection failed')));
-        }
-      };
-
-      const onClose = () => {
-        this.isConnected = false;
-        this.handleReconnect();
-      };
-
-      const onMessage = (event: any) => {
-        const data = event.data || event; // Handle both browser and Node.js formats
-        this.handleMessage(typeof data === 'string' ? data : data.toString());
-      };
-      
-      // Attach listeners based on environment
-      if (typeof window !== 'undefined' && window.WebSocket) {
-        // Browser API
-        this.ws.onopen = onOpen;
-        this.ws.onerror = onError;
-        this.ws.onclose = onClose;
-        this.ws.onmessage = onMessage;
-      } else {
-        // Node.js API
-        this.ws.on('open', onOpen);
-        this.ws.on('error', onError);
-        this.ws.on('close', onClose);
-        this.ws.on('message', onMessage);
+        this.ws = getPlatformProviders().webSocket.connect(this.config.url, {
+          onOpen: () => {
+            resolved = true;
+            this.isConnected = true;
+            this.reconnectAttempts = 0;
+            resolve();
+          },
+          onError: (event) => {
+            if (!resolved) {
+              reject(NetworkError.connectionFailed(this.config.url, toError(event)));
+            }
+          },
+          onClose: () => {
+            this.isConnected = false;
+            this.handleReconnect();
+          },
+          onMessage: (data) => {
+            this.handleMessage(data);
+          }
+        });
+      } catch (error) {
+        reject(NetworkError.connectionFailed(this.config.url, error as Error));
       }
     });
   }
