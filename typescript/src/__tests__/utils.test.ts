@@ -17,8 +17,11 @@ import {
   fromOmneAddress,
   parseAddress,
   calculateGasCost,
-  estimateGas 
+  estimateGas,
+  recoverAddressFromMessage,
+  verifyMessageSignature
 } from '../utils';
+import { WalletAccount } from '../wallet';
 
 describe('Utility Functions', () => {
   const sampleHex = '742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e';
@@ -136,6 +139,28 @@ describe('Utility Functions', () => {
       expect(estimateGas('tokenTransfer')).toBe(50000);
       expect(estimateGas('orc20Deploy')).toBe(150000);
       expect(estimateGas('transfer', true)).toBe(41000); // with data
+    });
+  });
+
+  describe('Message signatures', () => {
+    test('recovers address from signed message', () => {
+      const account = WalletAccount.fromPrivateKey(`0x${'1'.repeat(64)}`);
+      const message = 'hello-omne';
+      const signature = account.signMessage(message);
+
+      const recovered = recoverAddressFromMessage(message, signature);
+      expect(recovered).toBe(account.address);
+      expect(verifyMessageSignature(message, signature, account.address)).toBe(true);
+      expect(verifyMessageSignature(message, signature, sampleOmne)).toBe(false);
+    });
+
+    test('recovers address from hex message payload', () => {
+      const account = WalletAccount.fromPrivateKey(`0x${'2'.repeat(64)}`);
+      const message = '0xdeadbeef';
+      const signature = account.signMessage(message);
+
+      const recovered = recoverAddressFromMessage(message, signature);
+      expect(recovered).toBe(account.address);
     });
   });
 });

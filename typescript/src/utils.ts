@@ -7,8 +7,9 @@
 
 import { getPlatformProviders } from './platform/context';
 import Big from 'big.js';
-import { sha3_256 } from '@noble/hashes/sha3';
+import { sha3_256, keccak_256 } from '@noble/hashes/sha3';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
+import { Signature } from '@noble/secp256k1';
 
 import { secureRandomBytes } from './secure-crypto';
 
@@ -218,6 +219,50 @@ export function toChecksumAddress(address: string): string {
   }
 
   return checksumAddress;
+}
+
+/**
+ * Recover Omne address from a signed message
+ */
+export function recoverAddressFromMessage(message: string, signature: string): string {
+  if (!signature) {
+    throw new Error('Signature is required');
+  }
+
+  const sigBytes = hexToBuffer(signature);
+  if (sigBytes.length !== 65) {
+    throw new Error('Invalid signature length');
+  }
+
+  let recovery = sigBytes[64];
+  if (recovery >= 27) {
+    recovery -= 27;
+  }
+  if (recovery > 1) {
+    throw new Error('Invalid signature recovery id');
+  }
+
+  const signatureCompact = sigBytes.slice(0, 64);
+  const messageBytes = message.startsWith('0x') ? hexToBuffer(message) : utf8ToBytes(message);
+  const messageHash = keccak_256(messageBytes);
+
+  const sig = Signature.fromCompact(signatureCompact).addRecoveryBit(recovery);
+  const publicKey = sig.recoverPublicKey(messageHash).toRawBytes(false);
+  const addressBytes = publicKey.slice(-20);
+  return toOmneAddress(addressBytes);
+}
+
+/**
+ * Verify a signed message against an expected address
+ */
+export function verifyMessageSignature(message: string, signature: string, expectedAddress: string): boolean {
+  try {
+    const recovered = recoverAddressFromMessage(message, signature);
+    const normalizedExpected = normalizeAddress(expectedAddress);
+    return recovered === normalizedExpected;
+  } catch {
+    return false;
+  }
 }
 
 /**
