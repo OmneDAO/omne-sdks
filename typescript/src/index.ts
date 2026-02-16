@@ -39,6 +39,8 @@ export {
   fromOmneAddress,
   parseAddress,
   toChecksumAddress,
+  recoverAddressFromMessage,
+  verifyMessageSignature,
   calculateGasCost,
   estimateGas,
   randomHex,
