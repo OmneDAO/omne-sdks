@@ -311,11 +311,11 @@ export function generateBlockHash(): string {
 }
 
 /**
- * Generate Omne transaction hash with tx_ prefix
+ * Generate Omne transaction hash with canonical txn_ prefix
  */
 export function generateTransactionHash(): string {
-  const randomBytes = secureRandomBytes(30); // 30 bytes = 60 hex chars
-  return 'tx_' + bufferToHex(randomBytes).slice(2);
+  const randomBytes = secureRandomBytes(32); // 32 bytes = 64 hex chars
+  return 'txn_' + bufferToHex(randomBytes).slice(2);
 }
 
 /**
@@ -334,12 +334,12 @@ export function isValidBlockHash(hash: string): boolean {
  * Validate Omne transaction hash format
  */
 export function isValidTransactionHash(hash: string): boolean {
-  if (typeof hash !== 'string' || !hash.startsWith('tx_')) {
+  if (typeof hash !== 'string' || !hash.startsWith('txn_')) {
     return false;
   }
   
-  const hexPart = hash.slice(3); // Remove 'tx_' prefix
-  return hexPart.length === 60 && /^[0-9a-fA-F]{60}$/.test(hexPart);
+  const hexPart = hash.slice(4); // Remove 'txn_' prefix
+  return hexPart.length === 64 && /^[0-9a-fA-F]{64}$/.test(hexPart);
 }
 
 /**
