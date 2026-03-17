@@ -18,10 +18,11 @@ import {
   parseAddress,
   calculateGasCost,
   estimateGas,
-  recoverAddressFromMessage,
+  verifyEd25519Signature,
   verifyMessageSignature
 } from '../utils';
 import { WalletAccount } from '../wallet';
+import { hexToBuffer, bufferToHex } from '../utils';
 
 describe('Utility Functions', () => {
   const sampleHex = '742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e';
@@ -57,35 +58,31 @@ describe('Utility Functions', () => {
   });
 
   describe('Address validation', () => {
-    test('isValidAddress validates both Omne and hex addresses', () => {
-      // Omne addresses
+    test('isValidAddress validates Omne and raw hex addresses', () => {
       expect(isValidAddress(sampleOmne)).toBe(true);
-      // Hex addresses (legacy)
-      expect(isValidAddress(`0x${sampleHex}`)).toBe(true);
       expect(isValidAddress(sampleHex)).toBe(true);
     });
 
     test('isValidOmneAddress validates Omne format specifically', () => {
       expect(isValidOmneAddress(sampleOmne)).toBe(true);
-      expect(isValidOmneAddress(`0x${sampleHex}`)).toBe(false);
+      expect(isValidOmneAddress(sampleHex)).toBe(false);
       expect(isValidOmneAddress('invalid')).toBe(false);
     });
 
-    test('isValidHexAddress validates hex format specifically', () => {
-      expect(isValidHexAddress(`0x${sampleHex}`)).toBe(true);
+    test('isValidHexAddress validates raw hex format (no prefix)', () => {
       expect(isValidHexAddress(sampleHex)).toBe(true);
-      expect(isValidHexAddress('0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E')).toBe(false);
       expect(isValidHexAddress(sampleHex.toUpperCase())).toBe(false);
       expect(isValidHexAddress(sampleOmne)).toBe(false);
+      expect(isValidHexAddress('zzzz35cc4bf688aee6f7c3c3a6b1c98aaee5e84e')).toBe(false);
+      expect(isValidHexAddress('742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84')).toBe(false); // 39 chars
     });
 
     test('isValidAddress rejects invalid addresses', () => {
-      expect(isValidAddress('0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84')).toBe(false); // too short
-      expect(isValidAddress('0x742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84ex')).toBe(false); // invalid hex
-      expect(isValidAddress('omne1invalid')).toBe(false); // invalid Omne
+      expect(isValidAddress('742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84')).toBe(false); // 39 chars
+      expect(isValidAddress('omne1invalid')).toBe(false);
       expect(isValidAddress('not_an_address')).toBe(false);
       expect(isValidAddress('')).toBe(false);
-      expect(isValidAddress('0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E')).toBe(false);
+      expect(isValidAddress(sampleHex.toUpperCase())).toBe(false);
       expect(isValidAddress(`omne1${sampleHex.toUpperCase()}`)).toBe(false);
     });
 
@@ -102,8 +99,8 @@ describe('Utility Functions', () => {
       expect(decoded).toEqual(testBytes);
     });
 
-    test('parseAddress handles both formats', () => {
-      const hexResult = parseAddress(`0x${sampleHex}`);
+    test('parseAddress handles Omne and raw hex formats', () => {
+      const hexResult = parseAddress(sampleHex);
       expect(hexResult.format).toBe('hex');
       expect(hexResult.bytes.length).toBe(20);
 
@@ -113,17 +110,14 @@ describe('Utility Functions', () => {
       expect(omneResult.bytes).toEqual(hexResult.bytes);
     });
 
-    test('normalizeAddress converts to Omne format', () => {
-      const hexAddr = `0x${sampleHex}`;
-      const normalized = normalizeAddress(hexAddr);
+    test('normalizeAddress converts raw hex to Omne format', () => {
+      const normalized = normalizeAddress(sampleHex);
       expect(normalized).toMatch(/^omne1[0-9a-f]{40}$/);
 
       // Omne addresses should remain unchanged
-      const omneAddr = sampleOmne;
-      expect(normalizeAddress(omneAddr)).toBe(omneAddr);
+      expect(normalizeAddress(sampleOmne)).toBe(sampleOmne);
 
       // Uppercase hex inputs should be rejected
-      expect(() => normalizeAddress('0X742D35CC4BF688AEE6F7C3C3A6B1C98AAEE5E84E')).toThrow();
       expect(() => normalizeAddress(sampleHex.toUpperCase())).toThrow();
     });
   });
@@ -143,24 +137,34 @@ describe('Utility Functions', () => {
   });
 
   describe('Message signatures', () => {
-    test('recovers address from signed message', () => {
-      const account = WalletAccount.fromPrivateKey(`0x${'1'.repeat(64)}`);
+    test('verifies ed25519 signed message against signer address', () => {
+      const account = WalletAccount.fromPrivateKey('1'.repeat(64));
       const message = 'hello-omne';
       const signature = account.signMessage(message);
 
-      const recovered = recoverAddressFromMessage(message, signature);
-      expect(recovered).toBe(account.address);
+      // Extract the signature and public key components.
+      const combined = hexToBuffer(signature);
+      const sigHex = bufferToHex(combined.slice(0, 64));
+      const pubHex = bufferToHex(combined.slice(64));
+
+      // Explicit verification with separate sig and pubkey.
+      expect(verifyEd25519Signature(message, sigHex, pubHex, account.address)).toBe(true);
+
+      // Backward-compat wrapper accepts the combined 96-byte hex.
       expect(verifyMessageSignature(message, signature, account.address)).toBe(true);
       expect(verifyMessageSignature(message, signature, sampleOmne)).toBe(false);
     });
 
-    test('recovers address from hex message payload', () => {
-      const account = WalletAccount.fromPrivateKey(`0x${'2'.repeat(64)}`);
-      const message = '0xdeadbeef';
+    test('verifies ed25519 signed message with different key', () => {
+      const account = WalletAccount.fromPrivateKey('2'.repeat(64));
+      const message = 'deadbeef';
       const signature = account.signMessage(message);
 
-      const recovered = recoverAddressFromMessage(message, signature);
-      expect(recovered).toBe(account.address);
+      const combined = hexToBuffer(signature);
+      const sigHex = bufferToHex(combined.slice(0, 64));
+      const pubHex = bufferToHex(combined.slice(64));
+
+      expect(verifyEd25519Signature(message, sigHex, pubHex, account.address)).toBe(true);
     });
   });
 });

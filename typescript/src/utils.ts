@@ -7,9 +7,9 @@
 
 import { getPlatformProviders } from './platform/context';
 import Big from 'big.js';
-import { sha3_256, keccak_256 } from '@noble/hashes/sha3';
-import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
-import { Signature } from '@noble/secp256k1';
+import { utf8ToBytes } from '@noble/hashes/utils';
+import { sha256 } from '@noble/hashes/sha256';
+import { ed25519 } from '@noble/curves/ed25519';
 
 import { secureRandomBytes } from './secure-crypto';
 
@@ -69,7 +69,7 @@ export function toOmneAddress(addressBytes: Uint8Array): string {
   if (addressBytes.length !== 20) {
     throw new Error(`Address must be 20 bytes, got ${addressBytes.length}`);
   }
-  const hex = bufferToHex(addressBytes).slice(2).toLowerCase();
+  const hex = bufferToHex(addressBytes).toLowerCase();
   return `omne1${hex}`;
 }
 
@@ -92,7 +92,8 @@ export function fromOmneAddress(omneAddress: string): Uint8Array {
 }
 
 /**
- * Parse address - supports both hex (0x...) and Omne (omne1...) formats
+ * Parse address — only Omne format (omne1...) and raw 40-char hex are accepted.
+ * The Omne ecosystem does not use the Ethereum 0x prefix.
  */
 export function parseAddress(address: string): { format: 'hex' | 'omne', bytes: Uint8Array } {
   if (typeof address !== 'string') {
@@ -108,20 +109,7 @@ export function parseAddress(address: string): { format: 'hex' | 'omne', bytes: 
       format: 'omne',
       bytes: fromOmneAddress(address)
     };
-  } else if (address.startsWith('0x')) {
-    const hex = address.slice(2);
-    if (hex.length !== 40) {
-      throw new Error(`Invalid hex address length: ${address}`);
-    }
-    if (!/^[0-9a-f]{40}$/.test(hex)) {
-      throw new Error(`Invalid hex address characters: ${address}`);
-    }
-    return {
-      format: 'hex',
-      bytes: hexToBuffer(hex)
-    };
   } else if (/^[0-9a-f]{40}$/.test(address)) {
-    // Handle hex addresses without 0x prefix
     return {
       format: 'hex',
       bytes: hexToBuffer(address)
@@ -164,102 +152,92 @@ export function isValidOmneAddress(address: string): boolean {
 }
 
 /**
- * Validate Ethereum-compatible address format (legacy)
+ * Validate raw hex address format (40 lowercase hex chars, no prefix).
  */
 export function isValidHexAddress(address: string): boolean {
   if (typeof address !== 'string') {
     return false;
   }
 
-  if (address !== address.toLowerCase()) {
-    return false;
-  }
-
-  // Remove 0x prefix if present
-  const cleanAddress = address.startsWith('0x') ? address.slice(2) : address;
-  
-  // Check length (40 hex characters = 20 bytes)
-  if (cleanAddress.length !== 40) {
-    return false;
-  }
-  
-  // Check hex format (lowercase only)
-  return /^[0-9a-f]{40}$/.test(cleanAddress);
+  return /^[0-9a-f]{40}$/.test(address);
 }
 
 /**
- * Normalize address to standard format
+ * Normalize address to Omne format.
  */
 export function normalizeAddress(address: string): string {
   const parsed = parseAddress(address);
   
   if (parsed.format === 'omne') {
-    return address; // Already in Omne format
+    return address;
   } else {
-    // Convert hex to Omne format
     return toOmneAddress(parsed.bytes);
   }
 }
 
 /**
- * Generate checksum address (EIP-55) - deprecated, use Omne format instead
- * @deprecated Use Omne address format instead
+ * Verify an ed25519 signature against a message and expected address.
+ *
+ * Ed25519 does not support public key recovery from a signature alone;
+ * instead the caller must supply the signer's public key so we can
+ * verify the signature and then check that the public key maps to the
+ * expected Omne address.
  */
-export function toChecksumAddress(address: string): string {
-  // For backward compatibility, convert to hex first if it's Omne format
-  const parsed = parseAddress(address);
+export function verifyEd25519Signature(
+  message: string,
+  signatureHex: string,
+  publicKeyHex: string,
+  expectedAddress: string
+): boolean {
+  try {
+    const sigBytes = hexToBuffer(signatureHex);
+    if (sigBytes.length !== 64) {
+      return false;
+    }
 
-  const hexAddress = bufferToHex(parsed.bytes);
-  const hash = bytesToHex(sha3_256(utf8ToBytes(hexAddress.slice(2))));
+    const pubKeyBytes = hexToBuffer(publicKeyHex);
+    if (pubKeyBytes.length !== 32) {
+      return false;
+    }
 
-  let checksumAddress = '0x';
-  for (let i = 0; i < hexAddress.length - 2; i += 1) {
-    const char = hexAddress[i + 2];
-    checksumAddress += parseInt(hash[i], 16) >= 8 ? char.toUpperCase() : char.toLowerCase();
+    const messageBytes = utf8ToBytes(message);
+    const messageHash = sha256(messageBytes);
+
+    // Verify the ed25519 signature.
+    const valid = ed25519.verify(sigBytes, messageHash, pubKeyBytes);
+    if (!valid) {
+      return false;
+    }
+
+    // Derive the address from the public key and compare.
+    const addrPayload = new Uint8Array(15 + 32);
+    addrPayload.set(utf8ToBytes('OMNE_ADDRESS_V1'), 0);
+    addrPayload.set(pubKeyBytes, 15);
+    const addrHash = sha256(addrPayload);
+    const derivedAddress = toOmneAddress(addrHash.slice(0, 20));
+
+    return derivedAddress === normalizeAddress(expectedAddress);
+  } catch {
+    return false;
   }
-
-  return checksumAddress;
 }
 
 /**
- * Recover Omne address from a signed message
- */
-export function recoverAddressFromMessage(message: string, signature: string): string {
-  if (!signature) {
-    throw new Error('Signature is required');
-  }
-
-  const sigBytes = hexToBuffer(signature);
-  if (sigBytes.length !== 65) {
-    throw new Error('Invalid signature length');
-  }
-
-  let recovery = sigBytes[64];
-  if (recovery >= 27) {
-    recovery -= 27;
-  }
-  if (recovery > 1) {
-    throw new Error('Invalid signature recovery id');
-  }
-
-  const signatureCompact = sigBytes.slice(0, 64);
-  const messageBytes = message.startsWith('0x') ? hexToBuffer(message) : utf8ToBytes(message);
-  const messageHash = keccak_256(messageBytes);
-
-  const sig = Signature.fromCompact(signatureCompact).addRecoveryBit(recovery);
-  const publicKey = sig.recoverPublicKey(messageHash).toRawBytes(false);
-  const addressBytes = publicKey.slice(-20);
-  return toOmneAddress(addressBytes);
-}
-
-/**
- * Verify a signed message against an expected address
+ * Verify a signed message against an expected address.
+ *
+ * @deprecated Use verifyEd25519Signature() which takes a public key.
+ * This wrapper exists for backward compatibility but requires both
+ * signature and public key concatenated (64-byte sig + 32-byte pubkey = 96 bytes).
  */
 export function verifyMessageSignature(message: string, signature: string, expectedAddress: string): boolean {
   try {
-    const recovered = recoverAddressFromMessage(message, signature);
-    const normalizedExpected = normalizeAddress(expectedAddress);
-    return recovered === normalizedExpected;
+    const combined = hexToBuffer(signature);
+    if (combined.length !== 96) {
+      return false;
+    }
+    const sigHex = bufferToHex(combined.slice(0, 64));
+    const pubHex = bufferToHex(combined.slice(64));
+    return verifyEd25519Signature(message, sigHex, pubHex, expectedAddress);
   } catch {
     return false;
   }
@@ -307,7 +285,7 @@ export function randomHex(bytes: number): string {
  */
 export function generateBlockHash(): string {
   const randomBytes = secureRandomBytes(30); // 30 bytes = 60 hex chars
-  return 'bh_' + bufferToHex(randomBytes).slice(2);
+  return 'bh_' + bufferToHex(randomBytes);
 }
 
 /**
@@ -315,7 +293,7 @@ export function generateBlockHash(): string {
  */
 export function generateTransactionHash(): string {
   const randomBytes = secureRandomBytes(32); // 32 bytes = 64 hex chars
-  return 'txn_' + bufferToHex(randomBytes).slice(2);
+  return 'txn_' + bufferToHex(randomBytes);
 }
 
 /**
@@ -476,11 +454,12 @@ export function safeString(value: any, defaultValue: string = ''): string {
 }
 
 /**
- * Convert hex string to buffer (Node.js compatible)
+ * Convert hex string to buffer.
+ *
+ * Expects raw lowercase hex with no prefix.  This is the Omne convention.
  */
 export function hexToBuffer(hex: string): Uint8Array {
-  const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
-  const normalized = cleanHex.length % 2 === 0 ? cleanHex : `0${cleanHex}`;
+  const normalized = hex.length % 2 === 0 ? hex : `0${hex}`;
   const buffer = new Uint8Array(normalized.length / 2);
 
   for (let i = 0; i < normalized.length; i += 2) {
@@ -491,10 +470,13 @@ export function hexToBuffer(hex: string): Uint8Array {
 }
 
 /**
- * Convert buffer to hex string
+ * Convert buffer to hex string.
+ *
+ * Omne convention: raw lowercase hex with no prefix.  The Omne ecosystem
+ * does not use the Ethereum "0x" prefix; addresses use "omne1" instead.
  */
 export function bufferToHex(buffer: Uint8Array): string {
-  return '0x' + Array.from(buffer).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(buffer).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**

@@ -17,7 +17,8 @@ describe('Wallet', () => {
     expect(account.privateKey).toBe(accountAgain.privateKey);
     expect(account.address).toBe(accountAgain.address);
     expect(account.address.startsWith('omne1')).toBe(true);
-    expect(account.publicKey.startsWith('0x')).toBe(true);
+    // Public key is raw hex, no 0x prefix (Omne convention).
+    expect(account.publicKey).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('exports and imports keystore for an account', async () => {
@@ -40,7 +41,7 @@ describe('Wallet', () => {
     expect(exported.mnemonic).toBe(TEST_MNEMONIC);
     expect(exported.accounts).toHaveLength(5);
 
-    const expectedFirstAddressHex = bufferToHex(fromOmneAddress(derivedAccounts[0].address)).slice(2);
+    const expectedFirstAddressHex = bufferToHex(fromOmneAddress(derivedAccounts[0].address));
 
     expect(exported.accounts[0].address).toBe(expectedFirstAddressHex);
     expect(exported.accounts[0].crypto.cipher).toBe('aes-256-ctr');

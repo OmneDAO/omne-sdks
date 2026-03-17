@@ -3,10 +3,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { sha256 } from '@noble/hashes/sha256';
+import { bytesToHex } from '@noble/hashes/utils';
 
-import { GuardrailError } from '../errors';
+import { GuardrailError, NetworkError } from '../errors';
 import { OmneClient } from '../client';
 import { buildDeploymentHeaders, generateDeploymentNonce } from '../secure-client';
+import { setPlatformProviders } from '../platform/context';
+import { createNodePlatformProviders } from '../platform/node';
 import {
   DeploymentPlan,
   ensureSignedCompilerAttachment,
@@ -291,6 +295,218 @@ describe('OmneClient metadata endpoints', () => {
 
     expect(result?.planId).toBe('plan_1');
     expect(result?.nonceHash).toBe('hash_1');
+  });
+});
+
+describe('OmneClient metadata mock integration (full flow + auth + rate-limit)', () => {
+  afterEach(() => {
+    delete (globalThis as any).fetch;
+  });
+
+  // Shared mock plan payloads for the full flow tests.
+  const planSummary = {
+    plan_id: 'pln_flow1',
+    network: 'testnet',
+    operator_id: 'operator_1',
+    signer_key: 'signer_1',
+    compiler_signer: null,
+    digest: 'digest_flow1',
+    services: ['settlement', 'orchestrator'],
+    deployment_nonce: 'nonce_flow1',
+    submitted_at: '2025-06-01T00:00:00.000Z',
+  };
+
+  test('full flow: list → detail → digest → provenance with auth headers and rate-limit', async () => {
+    const callLog: { pathname: string; authHeader: string | null }[] = [];
+
+    (globalThis as any).fetch = jest.fn(async (input: RequestInfo, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      callLog.push({ pathname: url.pathname, authHeader: headers.Authorization ?? null });
+
+      const rateLimitHeaders = {
+        'content-type': 'application/json',
+        'X-RateLimit-Limit': '100',
+        'X-RateLimit-Remaining': '97',
+        'X-RateLimit-Reset': '60',
+      };
+
+      // Route based on pathname.
+      if (url.pathname.endsWith('/v1/plans') && !url.pathname.includes('/digest/')) {
+        return new Response(JSON.stringify({
+          plans: [planSummary],
+          pagination: { page: 1, page_size: 50, total: 1 },
+        }), { status: 200, headers: rateLimitHeaders });
+      }
+
+      if (url.pathname.endsWith('/v1/plans/pln_flow1')) {
+        return new Response(JSON.stringify({
+          plan: planSummary,
+          plan_body: { services: [] },
+          submitted_at: planSummary.submitted_at,
+        }), { status: 200, headers: rateLimitHeaders });
+      }
+
+      if (url.pathname.endsWith('/v1/plans/digest/digest_flow1')) {
+        return new Response(JSON.stringify({
+          plan: planSummary,
+          plan_body: { services: [] },
+          submitted_at: planSummary.submitted_at,
+        }), { status: 200, headers: rateLimitHeaders });
+      }
+
+      if (url.pathname.includes('/v1/provenance/')) {
+        return new Response(JSON.stringify({
+          nonce_hash: 'hash_flow1',
+          plan_id: 'pln_flow1',
+          operator_id: 'operator_1',
+          signer_key: 'signer_1',
+          compiler_signer: null,
+          digest: 'digest_flow1',
+          first_seen_at: '2025-06-01T00:00:01.000Z',
+        }), { status: 200, headers: rateLimitHeaders });
+      }
+
+      return new Response('', { status: 404 });
+    });
+
+    const client = new OmneClient({
+      url: 'http://127.0.0.1:8545',
+      deploymentUrl: 'http://127.0.0.1:8545/v1/deployments',
+      authToken: 'flow-test-token',
+    });
+
+    // Step 1: List.
+    const list = await client.listDeploymentPlans();
+    expect(list.plans).toHaveLength(1);
+    expect(list.plans[0].planId).toBe('pln_flow1');
+
+    // Step 2: Detail by ID.
+    const detail = await client.getDeploymentPlan('pln_flow1');
+    expect(detail).not.toBeNull();
+    expect(detail!.plan.services).toContain('settlement');
+
+    // Step 3: Detail by digest.
+    const byDigest = await client.getDeploymentPlanByDigest('digest_flow1');
+    expect(byDigest).not.toBeNull();
+    expect(byDigest!.plan.planId).toBe('pln_flow1');
+
+    // Step 4: Nonce provenance.
+    const prov = await client.getNonceProvenance('hash_flow1');
+    expect(prov).not.toBeNull();
+    expect(prov!.planId).toBe('pln_flow1');
+
+    // Verify auth header was sent on every request.
+    expect(callLog).toHaveLength(4);
+    for (const entry of callLog) {
+      expect(entry.authHeader).toBe('Bearer flow-test-token');
+    }
+  });
+
+  test('rejects with NetworkError on 401 when auth token is missing', async () => {
+    (globalThis as any).fetch = jest.fn(async () => {
+      return new Response(JSON.stringify({ error: 'unauthorized' }), {
+        status: 401,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    await expect(client.listDeploymentPlans()).rejects.toThrow(NetworkError);
+  });
+
+  test('rejects with NetworkError on 403 when auth token is invalid', async () => {
+    (globalThis as any).fetch = jest.fn(async () => {
+      return new Response(JSON.stringify({ error: 'forbidden' }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const client = new OmneClient({
+      url: 'http://127.0.0.1:8545',
+      authToken: 'bad-token',
+    });
+    await expect(client.listDeploymentPlans()).rejects.toThrow(NetworkError);
+  });
+
+  test('returns null on 404 for individual plan lookup', async () => {
+    (globalThis as any).fetch = jest.fn(async () => {
+      return new Response('', {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    const result = await client.getDeploymentPlan('pln_nonexistent');
+    expect(result).toBeNull();
+  });
+
+  test('returns null on 404 for nonce provenance lookup', async () => {
+    (globalThis as any).fetch = jest.fn(async () => {
+      return new Response('', {
+        status: 404,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    const result = await client.getNonceProvenance('unknown_hash');
+    expect(result).toBeNull();
+  });
+
+  test('throws GuardrailError on 501 for digest lookup', async () => {
+    (globalThis as any).fetch = jest.fn(async () => {
+      return new Response('', {
+        status: 501,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const client = new OmneClient('http://127.0.0.1:8545');
+    await expect(client.getDeploymentPlanByDigest('any_digest')).rejects.toThrow(GuardrailError);
+  });
+});
+
+describe('OmneClient metadata endpoints (staging smoke)', () => {
+  const baseUrl = process.env.OMNE_METADATA_BASE_URL ?? '';
+  const authToken = process.env.OMNE_METADATA_AUTH_TOKEN ?? '';
+  const hasStagingConfig = baseUrl.trim().length > 0 && authToken.trim().length > 0;
+  const runIfConfigured = hasStagingConfig ? test : test.skip;
+
+  runIfConfigured('lists deployment plans with auth and performs follow-up lookups', async () => {
+    // Keep staging smoke tests time-bounded but long enough for network latency.
+    jest.setTimeout(20000);
+
+    // Ensure a fetch implementation is available for staging smoke tests.
+    setPlatformProviders(createNodePlatformProviders());
+
+    const client = new OmneClient({
+      url: 'http://localhost:0',
+      metadataBaseUrl: baseUrl,
+      authToken,
+    });
+
+    const list = await client.listDeploymentPlans({ pageSize: 1 });
+    expect(Array.isArray(list.plans)).toBe(true);
+
+    const first = list.plans[0];
+    if (!first) {
+      return;
+    }
+
+    const planDetails = await client.getDeploymentPlan(first.planId);
+    if (planDetails?.plan?.digest) {
+      await client.getDeploymentPlanByDigest(planDetails.plan.digest);
+    }
+
+    if (planDetails?.plan?.deploymentNonce) {
+      // Metadata provenance expects the SHA-256 hash of the deployment nonce.
+      const nonceBytes = new TextEncoder().encode(planDetails.plan.deploymentNonce);
+      const nonceHash = bytesToHex(sha256(nonceBytes));
+      await client.getNonceProvenance(nonceHash);
+    }
   });
 });
 

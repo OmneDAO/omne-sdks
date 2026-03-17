@@ -35,7 +35,7 @@ export class TxBuilder {
       gasLimit,
       gasPrice: gasPriceQuar,
       nonce,
-      data: txOpts.data ?? '0x',
+      data: txOpts.data ?? '',
       priority: txOpts.priority ?? 'standard',
       layer: txOpts.layer
     } as Transaction;

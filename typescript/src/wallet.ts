@@ -2,18 +2,19 @@
  * Wallet implementation for Omne SDK.
  *
  * Provides mnemonic-based HD wallet support with account derivation,
- * keystore export/import, and signing helpers. Implemented without Node-only
- * primitives so bundles remain browser-compatible.
+ * keystore export/import, and signing helpers.  All signing uses ed25519 —
+ * the sole algorithm across the Omne ecosystem.
+ *
+ * HD derivation follows SLIP-0010 (ed25519 curve, hardened-only paths).
  */
 
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist as englishWordlist } from '@scure/bip39/wordlists/english';
-import { HDKey } from '@scure/bip32';
-import { getPublicKey, sign, etc as secpEtc } from '@noble/secp256k1';
-import { keccak_256 } from '@noble/hashes/sha3';
-import { utf8ToBytes } from '@noble/hashes/utils';
+import { ed25519 } from '@noble/curves/ed25519';
+import { utf8ToBytes, bytesToHex as nobleToHex } from '@noble/hashes/utils';
 import { hmac } from '@noble/hashes/hmac';
 import { sha256 } from '@noble/hashes/sha256';
+import { sha512 } from '@noble/hashes/sha512';
 
 import { WalletConfig, Keystore, Transaction } from './types';
 import { WalletError, ValidationError } from './errors';
@@ -26,12 +27,6 @@ import {
   SecureEncryptionResult
 } from './secure-crypto';
 
-if (!secpEtc.hmacSha256Sync) {
-  // Provide a synchronous HMAC implementation so noble's deterministic signing works in browsers
-  secpEtc.hmacSha256Sync = (key: Uint8Array, ...msgs: Uint8Array[]) =>
-    hmac(sha256, key, secpEtc.concatBytes(...msgs));
-}
-
 /**
  * Individual account with signing capabilities.
  */
@@ -42,19 +37,17 @@ export class WalletAccount {
   public readonly path?: string;
 
   constructor(privateKey: string, path?: string) {
-    if (!privateKey.startsWith('0x')) {
-      privateKey = `0x${privateKey}`;
-    }
-
-    if (privateKey.length !== 66) {
+    // ed25519 private key seed is 32 bytes (64 hex chars, raw hex, no prefix).
+    if (privateKey.length !== 64 || !/^[0-9a-f]{64}$/.test(privateKey)) {
       throw WalletError.invalidPrivateKey(privateKey);
     }
 
     this.privateKey = privateKey;
     this.path = path;
 
+    // Derive the ed25519 public key (32 bytes) from the private key seed.
     const privateKeyBytes = hexToBuffer(privateKey);
-    const publicKeyBytes = getPublicKey(privateKeyBytes, false);
+    const publicKeyBytes = ed25519.getPublicKey(privateKeyBytes);
 
     this.publicKey = bufferToHex(publicKeyBytes);
     this.address = this.generateAddress(publicKeyBytes);
@@ -71,10 +64,17 @@ export class WalletAccount {
   }
 
   signMessage(message: string): string {
-    const messageBytes = message.startsWith('0x') ? hexToBuffer(message) : utf8ToBytes(message);
-    const messageHash = keccak_256(messageBytes);
+    const messageBytes = utf8ToBytes(message);
+    // Hash the message with SHA-256 (consistent with ed25519 ecosystem choice).
+    const messageHash = sha256(messageBytes);
     const signature = this.signHash(messageHash);
-    return bufferToHex(signature);
+    // ed25519 has no key recovery, so we concatenate the 32-byte public key
+    // after the 64-byte signature so verifiers can derive the signer address.
+    const pubKeyBytes = hexToBuffer(this.publicKey);
+    const combined = new Uint8Array(signature.length + pubKeyBytes.length);
+    combined.set(signature, 0);
+    combined.set(pubKeyBytes, signature.length);
+    return bufferToHex(combined);
   }
 
   async toKeystore(password: string): Promise<Keystore> {
@@ -82,14 +82,14 @@ export class WalletAccount {
       throw new WalletError('Password required for keystore encryption', 'keystore_export');
     }
 
-    const encryptionResult = await secureEncrypt(this.privateKey.slice(2), password, {
+    const encryptionResult = await secureEncrypt(this.privateKey, password, {
       algorithm: 'pbkdf2',
       iterations: 100000,
       saltLength: 32
     });
 
     const addressBytes = fromOmneAddress(this.address);
-    const addressHex = bufferToHex(addressBytes).slice(2);
+    const addressHex = bufferToHex(addressBytes);
 
     return {
       version: 3,
@@ -138,35 +138,49 @@ export class WalletAccount {
   }
 
   private generateAddress(publicKey: Uint8Array): string {
-    const addressBytes = publicKey.slice(-20);
+    // Omne address derivation: SHA-256("OMNE_ADDRESS_V1" || ed25519_pubkey)[0..20]
+    // Must match the Rust-side derive_address() in wallet.rs.
+    const payload = new Uint8Array(15 + 32);
+    payload.set(utf8ToBytes('OMNE_ADDRESS_V1'), 0);
+    payload.set(publicKey, 15);
+    const hash = sha256(payload);
+    const addressBytes = hash.slice(0, 20);
     return toOmneAddress(addressBytes);
   }
 
   private hashTransaction(transaction: Transaction): Uint8Array {
-    const txData = JSON.stringify({
-      from: transaction.from,
-      to: transaction.to,
-      value: transaction.value,
-      gasLimit: transaction.gasLimit,
-      gasPrice: transaction.gasPrice,
-      nonce: transaction.nonce,
-      data: transaction.data || '0x'
-    });
+    // Canonical transaction hash matching the Rust-side hash_transaction().
+    // Fields are hashed in the same order and encoding (little-endian numbers).
+    const fromBytes = fromOmneAddress(transaction.from);
+    const toBytes = transaction.to ? fromOmneAddress(transaction.to) : new Uint8Array(0);
 
-    return keccak_256(utf8ToBytes(txData));
+    // Encode numbers as little-endian bytes matching Rust's to_le_bytes().
+    const valueBuf = le128(BigInt(transaction.value));
+    const gasLimitBuf = le64(BigInt(transaction.gasLimit));
+    const gasPriceBuf = le64(BigInt(transaction.gasPrice));
+    const nonceBuf = le64(BigInt(transaction.nonce));
+    const chainIdBuf = le64(BigInt(1)); // chain_id = 1 (matches Rust)
+    const dataBuf = transaction.data
+      ? hexToBuffer(transaction.data)
+      : new Uint8Array(0);
+
+    // Concatenate fields and hash.
+    const totalLen = fromBytes.length + toBytes.length + valueBuf.length +
+      gasLimitBuf.length + gasPriceBuf.length + nonceBuf.length +
+      chainIdBuf.length + dataBuf.length;
+    const buf = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const part of [fromBytes, toBytes, valueBuf, gasLimitBuf, gasPriceBuf, nonceBuf, chainIdBuf, dataBuf]) {
+      buf.set(part, offset);
+      offset += part.length;
+    }
+    return sha256(buf);
   }
 
   private signHash(hash: Uint8Array): Uint8Array {
+    // ed25519 signature: 64 bytes, no recovery ID.
     const privateKeyBytes = hexToBuffer(this.privateKey);
-    const signature = sign(hash, privateKeyBytes, { lowS: true });
-    const compact = signature.toCompactRawBytes();
-    const recoveryId = signature.recovery ?? 0;
-
-    const fullSignature = new Uint8Array(65);
-    fullSignature.set(compact);
-    fullSignature[64] = recoveryId + 27;
-
-    return fullSignature;
+    return ed25519.sign(hash, privateKeyBytes);
   }
 
   private generateUUID(): string {
@@ -174,18 +188,98 @@ export class WalletAccount {
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
 
-    const hex = bufferToHex(bytes).slice(2);
+    const hex = bufferToHex(bytes);
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
 }
 
 /**
+ * Encode a BigInt as a little-endian 8-byte (u64) buffer.
+ */
+function le64(n: bigint): Uint8Array {
+  const buf = new Uint8Array(8);
+  for (let i = 0; i < 8; i++) {
+    buf[i] = Number(n & 0xffn);
+    n >>= 8n;
+  }
+  return buf;
+}
+
+/**
+ * Encode a BigInt as a little-endian 16-byte (u128) buffer.
+ */
+function le128(n: bigint): Uint8Array {
+  const buf = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) {
+    buf[i] = Number(n & 0xffn);
+    n >>= 8n;
+  }
+  return buf;
+}
+
+/**
+ * SLIP-0010 ed25519 HD key derivation.
+ *
+ * Derives a child private key from a parent key + chain code at a
+ * hardened-only index.  The master key is obtained via
+ * HMAC-SHA512("ed25519 seed", BIP39 seed).
+ */
+interface Slip0010Key {
+  privateKey: Uint8Array; // 32 bytes
+  chainCode: Uint8Array;  // 32 bytes
+}
+
+function slip0010Master(seed: Uint8Array): Slip0010Key {
+  const I = hmac(sha512, utf8ToBytes('ed25519 seed'), seed);
+  return { privateKey: I.slice(0, 32), chainCode: I.slice(32) };
+}
+
+function slip0010DeriveChild(parent: Slip0010Key, index: number): Slip0010Key {
+  // SLIP-0010 ed25519 only supports hardened derivation.
+  const hardenedIndex = (index | 0x80000000) >>> 0;
+  const data = new Uint8Array(1 + 32 + 4);
+  data[0] = 0x00;
+  data.set(parent.privateKey, 1);
+  // Big-endian index.
+  data[33] = (hardenedIndex >>> 24) & 0xff;
+  data[34] = (hardenedIndex >>> 16) & 0xff;
+  data[35] = (hardenedIndex >>> 8) & 0xff;
+  data[36] = hardenedIndex & 0xff;
+
+  const I = hmac(sha512, parent.chainCode, data);
+  return { privateKey: I.slice(0, 32), chainCode: I.slice(32) };
+}
+
+/**
+ * Derive a key at a BIP-44 path using SLIP-0010 ed25519 hardened derivation.
+ * Path format: m / purpose' / coin_type' / account' / change' / index'
+ * (all levels are hardened for ed25519).
+ */
+function slip0010DerivePath(seed: Uint8Array, path: string): Slip0010Key {
+  const segments = path
+    .replace(/^m\/?/, '')
+    .split('/')
+    .filter(Boolean);
+
+  let key = slip0010Master(seed);
+  for (const seg of segments) {
+    const idx = parseInt(seg.replace("'", ''), 10);
+    if (isNaN(idx)) {
+      throw new WalletError(`Invalid derivation path segment: ${seg}`, 'key_derivation');
+    }
+    key = slip0010DeriveChild(key, idx);
+  }
+  return key;
+}
+
+/**
  * HD wallet with BIP39 mnemonic support.
+ *
+ * Uses SLIP-0010 for ed25519 HD key derivation (hardened-only paths).
  */
 export class Wallet {
   private mnemonic: string;
   private seed: Uint8Array;
-  private masterKey: HDKey;
   private readonly basePath = "m/44'/60'/0'/0";
 
   constructor(config?: WalletConfig) {
@@ -199,8 +293,7 @@ export class Wallet {
       this.mnemonic = generateMnemonic(englishWordlist, 128);
     }
 
-  this.seed = mnemonicToSeedSync(this.mnemonic, config?.password);
-    this.masterKey = HDKey.fromMasterSeed(this.seed);
+    this.seed = mnemonicToSeedSync(this.mnemonic, config?.password);
   }
 
   static generate(): Wallet {
@@ -228,14 +321,11 @@ export class Wallet {
       throw new ValidationError(`Account index must be non-negative: ${index}`, 'index', index);
     }
 
+    // SLIP-0010 ed25519 uses all-hardened paths.
     const path = `${this.basePath}/${index}`;
-    const derivedKey = this.masterKey.derive(path);
+    const derived = slip0010DerivePath(this.seed, path);
 
-    if (!derivedKey.privateKey) {
-      throw new WalletError(`Failed to derive key at path: ${path}`, 'key_derivation');
-    }
-
-    const privateKey = bufferToHex(derivedKey.privateKey);
+    const privateKey = bufferToHex(derived.privateKey);
     return new WalletAccount(privateKey, path);
   }
 
