@@ -358,6 +358,7 @@ function parseRpcBigInt(value: unknown): bigint {
       return 0n;
     }
     if (trimmed.startsWith('0x') || trimmed.startsWith('0X')) {
+      // Accept hex-prefixed values from external/JSON-RPC sources.
       try {
         return BigInt(trimmed);
       } catch {
@@ -1053,7 +1054,7 @@ export class OmneClient {
    */
   async getBlock(blockNumber: number | 'latest'): Promise<Block> {
     return await this.request('omne_getBlockByNumber', [
-      blockNumber === 'latest' ? 'latest' : `0x${blockNumber.toString(16)}`,
+      blockNumber === 'latest' ? 'latest' : blockNumber.toString(),
       false
     ]);
   }
@@ -1062,7 +1063,7 @@ export class OmneClient {
    * Get transaction receipt
    */
   async getTransactionReceipt(txHash: string): Promise<TransactionReceipt | null> {
-    if (!txHash.startsWith('0x') || txHash.length !== 66) {
+    if (!txHash.startsWith('txn_') || txHash.length !== 68) {
       throw ValidationError.invalidField('txHash', txHash);
     }
 

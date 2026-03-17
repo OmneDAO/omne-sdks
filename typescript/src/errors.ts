@@ -190,7 +190,7 @@ export class ValidationError extends OmneSDKError {
       `Invalid address format: ${address}`,
       'address',
       address,
-      { expectedFormat: '0x followed by 40 hex characters' }
+      { expectedFormat: 'omne1 followed by 40 hex characters, or 40-char raw hex' }
     );
   }
 
@@ -298,7 +298,7 @@ export class WalletError extends OmneSDKError {
       'private_key_validation',
       { 
         keyLength: key.length,
-        expectedLength: 66, // 0x + 64 hex chars
+        expectedLength: 64, // 64 hex chars, raw hex, no prefix
         providedKey: key.substring(0, 10) + '...' // First 10 chars for debugging
       }
     );

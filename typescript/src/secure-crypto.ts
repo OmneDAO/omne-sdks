@@ -61,8 +61,7 @@ function concatBytes(...arrays: Uint8Array[]): Uint8Array {
 }
 
 function normalizeHex(value: string): string {
-  const clean = value.startsWith('0x') ? value.slice(2) : value;
-  return clean.length % 2 === 0 ? clean : `0${clean}`;
+  return value.length % 2 === 0 ? value : `0${value}`;
 }
 
 function hexToBytesSafe(value: string): Uint8Array {
