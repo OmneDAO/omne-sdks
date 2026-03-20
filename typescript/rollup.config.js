@@ -5,13 +5,16 @@ const json = require('@rollup/plugin-json');
 const inject = require('@rollup/plugin-inject');
 const nodePolyfills = require('rollup-plugin-node-polyfills');
 
+// Only the first build (CJS) emits declarations so they aren't written
+// multiple times.  The declarationDir is set to ./dist so consumers
+// resolve types from "dist/index.d.ts" as declared in package.json.
 const createTsPlugin = (options = {}) =>
   typescript({
     tsconfig: './tsconfig.json',
     sourceMap: true,
     declaration: options.declaration ?? false,
-    declarationDir: './dist',
-    useTsconfigDeclarationDir: true,
+    declarationDir: options.declaration ? './dist' : undefined,
+    useTsconfigDeclarationDir: false,
     clean: options.clean ?? false
   });
 

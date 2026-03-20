@@ -12,6 +12,20 @@ export { OmneClient } from './client';
 export type { DeploymentRequestOptions, DeploymentPlanListQuery } from './client';
 export { Wallet, WalletAccount, WalletManager } from './wallet';
 
+// Contract abstraction
+export {
+  OmneContract,
+  AbiEncode,
+  ArgType,
+  encodeContractCall,
+  isAbiEncoded,
+} from './contract';
+export type {
+  AbiArgument,
+  ContractCallOptions,
+  ContractQueryResult,
+} from './contract';
+
 // Type definitions (interfaces and types only)
 export type * from './types';
 
@@ -100,7 +114,7 @@ export { setPlatformProviders } from './platform/context';
 export type { PlatformProviders } from './platform/providers';
 
 // SDK version and metadata
-export const SDK_VERSION = '0.2.0';
+export const SDK_VERSION = '0.3.0';
 export const SUPPORTED_NETWORKS = ['primum', 'testum', 'principalis'] as const;
 
 /**

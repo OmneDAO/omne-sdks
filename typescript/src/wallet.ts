@@ -11,7 +11,7 @@
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist as englishWordlist } from '@scure/bip39/wordlists/english';
 import { ed25519 } from '@noble/curves/ed25519';
-import { utf8ToBytes, bytesToHex as nobleToHex } from '@noble/hashes/utils';
+import { utf8ToBytes } from '@noble/hashes/utils';
 import { hmac } from '@noble/hashes/hmac';
 import { sha256 } from '@noble/hashes/sha256';
 import { sha512 } from '@noble/hashes/sha512';
