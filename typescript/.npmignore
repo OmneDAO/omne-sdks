@@ -1,0 +1,22 @@
+# Source and tests
+src/
+__tests__/
+examples/
+scripts/
+
+# Config files
+tsconfig.json
+rollup.config.js
+jest.config.js
+.eslintrc*
+.prettierrc*
+
+# Test artifacts
+*.test.ts
+*.spec.ts
+coverage/
+
+# Dev files
+.github/
+.gitignore
+.npmrc
