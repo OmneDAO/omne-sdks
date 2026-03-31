@@ -110,6 +110,32 @@ export {
   enforceAllowedServices
 } from './service-registry';
 
+// OMP (Omne Media Protocol) storage client
+export {
+  OmpClient,
+  OMP_CHUNK_SIZE,
+  OMP_MIN_REDUNDANCY,
+  OMP_MAX_REDUNDANCY,
+  OMP_DEFAULT_REDUNDANCY,
+} from './omp';
+export type {
+  OmpClientConfig,
+  OmpStoreOptions,
+  OmpStoreResult,
+  OmpPreparedAsset,
+  OmpManifest,
+  OmpRetrievalPlan,
+  OmpRetrievalChunk,
+  OmpStorageStats,
+  OmpChunkInfo,
+  OmpStorageTier,
+  OmpErasureCodec,
+  OmpAssetStatus,
+  OmpRegisterNodeOptions,
+  OmpStorageCapabilities,
+  OmpNodeContactInfo,
+} from './omp';
+
 export { setPlatformProviders } from './platform/context';
 export type { PlatformProviders } from './platform/providers';
 
