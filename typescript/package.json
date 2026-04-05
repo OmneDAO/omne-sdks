@@ -53,7 +53,7 @@
     "orc-20"
   ],
   "author": "OmneDAO <dev@omne.org>",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/OmneDAO/omne-blockchain.git",
