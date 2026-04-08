@@ -43,7 +43,39 @@ export type OmpStorageTier = 'hot' | 'warm' | 'cold';
 export type OmpErasureCodec = 'reed_solomon' | 'none';
 
 /** Asset upload status as returned by the coordinator. */
-export type OmpAssetStatus = 'Uploading' | 'Finalized';
+export type OmpAssetStatus = 'Uploading' | 'Finalized' | 'Archived' | 'Degraded';
+
+/** Result of deleting (archiving) an asset. */
+export interface OmpDeleteResult {
+  assetId: string;
+  status: 'archived';
+  chunksRemoved: number;
+}
+
+/** Result of listing assets by owner. */
+export interface OmpListAssetsResult {
+  owner: string;
+  assets: string[];
+  count: number;
+}
+
+/** Options for client-side encryption before storing an asset. */
+export interface OmpEncryptOptions {
+  /** AES-256-GCM key (32 bytes). Caller is responsible for key management. */
+  key: Uint8Array;
+}
+
+/** Metadata prepended to encrypted payloads for decryption. */
+export interface OmpEncryptedPayloadHeader {
+  /** Algorithm identifier. Always 'aes-256-gcm' for now. */
+  algorithm: 'aes-256-gcm';
+  /** 12-byte initialisation vector, hex-encoded. */
+  iv: string;
+  /** 16-byte auth tag, hex-encoded. */
+  authTag: string;
+  /** Original plaintext size in bytes. */
+  plaintextSize: number;
+}
 
 /** Metadata for a single chunk, computed client-side. */
 export interface OmpChunkInfo {
@@ -205,6 +237,44 @@ function uint8ToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
+}
+
+/**
+ * Encode a Uint8Array as a hex string (lowercase, no prefix).
+ */
+function uint8ToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Decode a hex string into a Uint8Array.
+ */
+function hexToUint8(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Resolve a WebCrypto implementation for the current platform.
+ * Works in browsers (globalThis.crypto) and Node.js 15+ (webcrypto).
+ */
+async function resolveCrypto(): Promise<Crypto> {
+  if (typeof globalThis.crypto?.subtle !== 'undefined') {
+    return globalThis.crypto;
+  }
+  // Node.js — webcrypto is available on the crypto module since v15.
+  const nodeCrypto = await import('crypto');
+  if (nodeCrypto.webcrypto) {
+    return nodeCrypto.webcrypto as unknown as Crypto;
+  }
+  throw new Error(
+    'No WebCrypto implementation available. Use Node 15+ or a modern browser.',
+  );
 }
 
 /**
@@ -456,6 +526,181 @@ export class OmpClient {
    */
   async registerStorageNode(options: OmpRegisterNodeOptions): Promise<{ nodeId: string; status: string }> {
     return this.rpc('omne_ompRegisterStorageNode', [options]);
+  }
+
+  /**
+   * Delete (archive) an asset. Only the manifest owner may call this.
+   * Transitions the asset to `Archived` status and triggers chunk GC on
+   * the node. This is irreversible — the asset data will be garbage-
+   * collected from storage nodes.
+   */
+  async deleteAsset(assetId: string, owner: string): Promise<OmpDeleteResult> {
+    if (!assetId) {
+      throw new ValidationError('assetId is required', 'assetId', '');
+    }
+    if (!owner) {
+      throw new ValidationError('owner is required', 'owner', '');
+    }
+    return this.rpc<OmpDeleteResult>('omne_ompDeleteAsset', [{ assetId, owner }]);
+  }
+
+  /**
+   * List all non-archived asset IDs owned by a given address.
+   */
+  async listAssets(owner: string): Promise<OmpListAssetsResult> {
+    if (!owner) {
+      throw new ValidationError('owner is required', 'owner', '');
+    }
+    return this.rpc<OmpListAssetsResult>('omne_ompListAssets', [owner]);
+  }
+
+  // ── Encryption Helpers ─────────────────────────────────────────────
+
+  /**
+   * Encrypt data with AES-256-GCM before storing on OMP.
+   *
+   * Prepends a fixed-size JSON header (algorithm, IV, auth tag, plaintext
+   * size) followed by a newline delimiter, then the ciphertext. The header
+   * is needed to decrypt — store it alongside the assetId or embed it in
+   * your application's metadata.
+   *
+   * Usage:
+   * ```ts
+   * const key = crypto.getRandomValues(new Uint8Array(32));
+   * const { encrypted, header } = await omp.encryptBytes(plaintext, { key });
+   * const result = await omp.storeBytes(encrypted, { owner, escrowOgt: 5 });
+   * // Save header + result.assetId — both needed for decryption
+   * ```
+   */
+  async encryptBytes(
+    data: Uint8Array,
+    options: OmpEncryptOptions,
+  ): Promise<{ encrypted: Uint8Array; header: OmpEncryptedPayloadHeader }> {
+    if (options.key.length !== 32) {
+      throw new ValidationError(
+        'AES-256-GCM key must be exactly 32 bytes',
+        'key',
+        `${options.key.length} bytes`,
+      );
+    }
+
+    const crypto = await resolveCrypto();
+
+    // Generate a random 12-byte IV (standard for AES-GCM).
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+
+    // Import the key for AES-256-GCM.
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      options.key,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt'],
+    );
+
+    // Encrypt. WebCrypto appends the 16-byte auth tag to the ciphertext.
+    const ciphertextWithTag = new Uint8Array(
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, data),
+    );
+
+    // Split ciphertext and auth tag (last 16 bytes).
+    const ciphertext = ciphertextWithTag.subarray(0, ciphertextWithTag.length - 16);
+    const authTag = ciphertextWithTag.subarray(ciphertextWithTag.length - 16);
+
+    const header: OmpEncryptedPayloadHeader = {
+      algorithm: 'aes-256-gcm',
+      iv: uint8ToHex(iv),
+      authTag: uint8ToHex(authTag),
+      plaintextSize: data.length,
+    };
+
+    // Encode header as UTF-8 JSON + newline delimiter, then append ciphertext.
+    const headerBytes = new TextEncoder().encode(JSON.stringify(header) + '\n');
+    const encrypted = new Uint8Array(headerBytes.length + ciphertext.length);
+    encrypted.set(headerBytes, 0);
+    encrypted.set(ciphertext, headerBytes.length);
+
+    return { encrypted, header };
+  }
+
+  /**
+   * Decrypt data that was encrypted with `encryptBytes()`.
+   *
+   * Reads the JSON header from the payload prefix, then decrypts the
+   * ciphertext with the provided key.
+   *
+   * Usage:
+   * ```ts
+   * const encrypted = await omp.retrieveBytes(assetId);
+   * const plaintext = await omp.decryptBytes(encrypted, { key });
+   * ```
+   */
+  async decryptBytes(
+    data: Uint8Array,
+    options: OmpEncryptOptions,
+  ): Promise<Uint8Array> {
+    if (options.key.length !== 32) {
+      throw new ValidationError(
+        'AES-256-GCM key must be exactly 32 bytes',
+        'key',
+        `${options.key.length} bytes`,
+      );
+    }
+
+    // Find the newline delimiter separating header from ciphertext.
+    const newlineIdx = data.indexOf(0x0a); // '\n'
+    if (newlineIdx === -1) {
+      throw new ValidationError(
+        'Encrypted payload missing header delimiter',
+        'data',
+        'no newline found',
+      );
+    }
+
+    const headerJson = new TextDecoder().decode(data.subarray(0, newlineIdx));
+    let header: OmpEncryptedPayloadHeader;
+    try {
+      header = JSON.parse(headerJson);
+    } catch {
+      throw new ValidationError(
+        'Failed to parse encryption header',
+        'header',
+        headerJson.slice(0, 100),
+      );
+    }
+
+    if (header.algorithm !== 'aes-256-gcm') {
+      throw new ValidationError(
+        `Unsupported encryption algorithm: ${header.algorithm}`,
+        'algorithm',
+        header.algorithm,
+      );
+    }
+
+    const iv = hexToUint8(header.iv);
+    const authTag = hexToUint8(header.authTag);
+    const ciphertext = data.subarray(newlineIdx + 1);
+
+    const crypto = await resolveCrypto();
+
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      options.key,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt'],
+    );
+
+    // WebCrypto expects ciphertext + authTag concatenated.
+    const ciphertextWithTag = new Uint8Array(ciphertext.length + authTag.length);
+    ciphertextWithTag.set(ciphertext, 0);
+    ciphertextWithTag.set(authTag, ciphertext.length);
+
+    const plaintext = new Uint8Array(
+      await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, ciphertextWithTag),
+    );
+
+    return plaintext;
   }
 
   /**
