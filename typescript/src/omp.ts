@@ -287,7 +287,7 @@ function computeMerkleRoot(chunkHashes: Uint8Array[]): string {
     return bytesToHex(new Uint8Array(32));
   }
 
-  let level = chunkHashes.map((h) => h.slice());
+  let level: Uint8Array[] = chunkHashes.map((h) => h.slice());
 
   while (level.length > 1) {
     const next: Uint8Array[] = [];
@@ -592,7 +592,7 @@ export class OmpClient {
     // Import the key for AES-256-GCM.
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      options.key,
+      options.key as BufferSource,
       { name: 'AES-GCM', length: 256 },
       false,
       ['encrypt'],
@@ -600,7 +600,7 @@ export class OmpClient {
 
     // Encrypt. WebCrypto appends the 16-byte auth tag to the ciphertext.
     const ciphertextWithTag = new Uint8Array(
-      await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, data),
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, cryptoKey, data as BufferSource),
     );
 
     // Split ciphertext and auth tag (last 16 bytes).
@@ -685,7 +685,7 @@ export class OmpClient {
 
     const cryptoKey = await crypto.subtle.importKey(
       'raw',
-      options.key,
+      options.key as BufferSource,
       { name: 'AES-GCM', length: 256 },
       false,
       ['decrypt'],
@@ -697,7 +697,7 @@ export class OmpClient {
     ciphertextWithTag.set(authTag, ciphertext.length);
 
     const plaintext = new Uint8Array(
-      await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, ciphertextWithTag),
+      await crypto.subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, cryptoKey, ciphertextWithTag as BufferSource),
     );
 
     return plaintext;
