@@ -26,7 +26,8 @@ import { hexToBuffer, bufferToHex } from '../utils';
 
 describe('Utility Functions', () => {
   const sampleHex = '742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e';
-  const sampleOmne = `omne1${sampleHex}`;
+  // Canonical om1z bech32m encoding of the same 20-byte address
+  const sampleOmne = toOmneAddress(hexToBuffer(sampleHex));
 
   describe('Quar conversion', () => {
     test('toQuar converts OMC to quar correctly', () => {
@@ -63,7 +64,7 @@ describe('Utility Functions', () => {
       expect(isValidAddress(sampleHex)).toBe(true);
     });
 
-    test('isValidOmneAddress validates Omne format specifically', () => {
+    test('isValidOmneAddress validates om1z format specifically', () => {
       expect(isValidOmneAddress(sampleOmne)).toBe(true);
       expect(isValidOmneAddress(sampleHex)).toBe(false);
       expect(isValidOmneAddress('invalid')).toBe(false);
@@ -79,42 +80,46 @@ describe('Utility Functions', () => {
 
     test('isValidAddress rejects invalid addresses', () => {
       expect(isValidAddress('742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84')).toBe(false); // 39 chars
-      expect(isValidAddress('omne1invalid')).toBe(false);
       expect(isValidAddress('not_an_address')).toBe(false);
       expect(isValidAddress('')).toBe(false);
       expect(isValidAddress(sampleHex.toUpperCase())).toBe(false);
-      expect(isValidAddress(`omne1${sampleHex.toUpperCase()}`)).toBe(false);
     });
 
-    test('Omne address encoding/decoding', () => {
+    test('om1z bech32m address encoding/decoding', () => {
       const testBytes = new Uint8Array([
         0x74, 0x2d, 0x35, 0xcc, 0x4b, 0xf6, 0x88, 0xae, 0xe6, 0xf7,
         0xc3, 0xc3, 0xa6, 0xb1, 0xc9, 0x8a, 0xae, 0xe5, 0xe8, 0x4e
       ]);
 
       const omneAddr = toOmneAddress(testBytes);
-      expect(omneAddr).toMatch(/^omne1[0-9a-f]{40}$/);
+      expect(omneAddr).toMatch(/^om1z/);
 
       const decoded = fromOmneAddress(omneAddr);
       expect(decoded).toEqual(testBytes);
     });
 
-    test('parseAddress handles Omne and raw hex formats', () => {
+    test('fromOmneAddress rejects non-om1z input', () => {
+      expect(() => fromOmneAddress('omne1' + sampleHex)).toThrow();
+      expect(() => fromOmneAddress('invalid')).toThrow();
+      expect(() => fromOmneAddress(sampleHex)).toThrow();
+    });
+
+    test('parseAddress handles om1z bech32m and raw hex formats', () => {
       const hexResult = parseAddress(sampleHex);
       expect(hexResult.format).toBe('hex');
       expect(hexResult.bytes.length).toBe(20);
 
       const omneAddr = toOmneAddress(hexResult.bytes);
       const omneResult = parseAddress(omneAddr);
-      expect(omneResult.format).toBe('omne');
+      expect(omneResult.format).toBe('bech32m');
       expect(omneResult.bytes).toEqual(hexResult.bytes);
     });
 
-    test('normalizeAddress converts raw hex to Omne format', () => {
+    test('normalizeAddress converts any format to om1z bech32m', () => {
       const normalized = normalizeAddress(sampleHex);
-      expect(normalized).toMatch(/^omne1[0-9a-f]{40}$/);
+      expect(normalized).toMatch(/^om1z/);
 
-      // Omne addresses should remain unchanged
+      // om1z addresses should remain unchanged
       expect(normalizeAddress(sampleOmne)).toBe(sampleOmne);
 
       // Uppercase hex inputs should be rejected
