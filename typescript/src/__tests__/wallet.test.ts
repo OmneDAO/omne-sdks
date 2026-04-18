@@ -16,7 +16,7 @@ describe('Wallet', () => {
     expect(wallet.getMnemonic()).toBe(TEST_MNEMONIC);
     expect(account.privateKey).toBe(accountAgain.privateKey);
     expect(account.address).toBe(accountAgain.address);
-    expect(account.address.startsWith('omne1')).toBe(true);
+    expect(account.address.startsWith('om1z')).toBe(true);
     // Public key is raw hex, no 0x prefix (Omne convention).
     expect(account.publicKey).toMatch(/^[0-9a-f]{64}$/);
   });

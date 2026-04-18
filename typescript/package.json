@@ -1,6 +1,6 @@
 {
   "name": "@omne/sdk",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Official TypeScript/JavaScript SDK for Omne Blockchain - Commerce-first blockchain with dual-layer consensus and microscopic fees",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
@@ -68,6 +68,7 @@
     "@noble/curves": "^1.9.0",
     "@noble/hashes": "^1.8.0",
     "@noble/secp256k1": "^2.3.0",
+    "@scure/base": "^1.1.0",
     "@scure/bip32": "^1.4.0",
     "@scure/bip39": "^1.4.0",
     "aes-js": "^3.1.2",

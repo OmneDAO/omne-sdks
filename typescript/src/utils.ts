@@ -10,12 +10,22 @@ import Big from 'big.js';
 import { utf8ToBytes } from '@noble/hashes/utils';
 import { sha256 } from '@noble/hashes/sha256';
 import { ed25519 } from '@noble/curves/ed25519';
+import { bech32m } from '@scure/base';
 
 import { secureRandomBytes } from './secure-crypto';
 
 // Configure Big.js for quar precision
 Big.DP = 18; // 18 decimal places for quar precision
 Big.RM = 1;  // Round down
+
+// ── om1z address constants ─────────────────────────────────────────────────
+// All Omne addresses use bech32m encoding with HRP "om" and witness version 2.
+// Witness version 2 maps to character 'z' in the bech32 alphabet, yielding
+// the canonical prefix "om1z".  The 20-byte payload is the first 20 bytes
+// of SHA-256("OMNE_ADDRESS_V1" || ed25519_pubkey).
+const ADDRESS_HRP = 'om';
+const ADDRESS_WITNESS_VERSION = 2; // bech32 alphabet index 2 = 'z'
+const ADDRESS_PAYLOAD_BYTES = 20;
 
 /**
  * Quar conversion constants
@@ -63,64 +73,65 @@ export function formatBalance(quarAmount: string | number | Big, decimals: numbe
 }
 
 /**
- * Convert 20-byte address to Omne format
+ * Encode 20-byte address as bech32m om1z format.
+ *
+ * Format: om1z<data><checksum>
+ *   - HRP "om" + separator "1" + witness version 2 ('z') + bech32m data
+ *   - 20-byte payload → ~42 character address
  */
 export function toOmneAddress(addressBytes: Uint8Array): string {
-  if (addressBytes.length !== 20) {
-    throw new Error(`Address must be 20 bytes, got ${addressBytes.length}`);
+  if (addressBytes.length !== ADDRESS_PAYLOAD_BYTES) {
+    throw new Error(`Address must be ${ADDRESS_PAYLOAD_BYTES} bytes, got ${addressBytes.length}`);
   }
-  const hex = bufferToHex(addressBytes).toLowerCase();
-  return `omne1${hex}`;
+  // Convert 8-bit bytes to 5-bit bech32m words, prepend witness version
+  const dataWords = bech32m.toWords(addressBytes);
+  const words = new Uint8Array([ADDRESS_WITNESS_VERSION, ...dataWords]);
+  return bech32m.encode(ADDRESS_HRP, words);
 }
 
 /**
- * Convert Omne address to 20-byte array
+ * Decode an om1z bech32m address to its 20-byte payload.
  */
-export function fromOmneAddress(omneAddress: string): Uint8Array {
-  if (!omneAddress.startsWith('omne1')) {
-    throw new Error(`Invalid Omne address prefix: ${omneAddress}`);
+export function fromOmneAddress(address: string): Uint8Array {
+  if (!address.startsWith('om1')) {
+    throw new Error(`Invalid address format: expected 'om1z' prefix, got '${address.slice(0, 6)}...'`);
   }
-  const hex = omneAddress.slice(5);
-  if (hex !== hex.toLowerCase()) {
-    throw new Error(`Uppercase characters are not allowed in Omne addresses: ${omneAddress}`);
+  const { prefix, words } = bech32m.decode(address as `${string}1${string}`);
+  if (prefix !== ADDRESS_HRP) {
+    throw new Error(`Invalid address HRP: expected '${ADDRESS_HRP}', got '${prefix}'`);
   }
-  if (!/^[0-9a-f]{40}$/.test(hex)) {
-    throw new Error(`Invalid Omne address hex payload: ${hex}`);
+  if (words[0] !== ADDRESS_WITNESS_VERSION) {
+    throw new Error(`Invalid witness version: expected ${ADDRESS_WITNESS_VERSION}, got ${words[0]}`);
   }
-
-  return hexToBuffer(hex);
+  const bytes = bech32m.fromWords(Array.from(words.slice(1)));
+  if (bytes.length !== ADDRESS_PAYLOAD_BYTES) {
+    throw new Error(`Invalid address payload: expected ${ADDRESS_PAYLOAD_BYTES} bytes, got ${bytes.length}`);
+  }
+  return Uint8Array.from(bytes);
 }
 
 /**
- * Parse address — only Omne format (omne1...) and raw 40-char hex are accepted.
- * The Omne ecosystem does not use the Ethereum 0x prefix.
+ * Parse address string to bytes. Accepts om1z bech32m and raw 40-char hex.
  */
-export function parseAddress(address: string): { format: 'hex' | 'omne', bytes: Uint8Array } {
+export function parseAddress(address: string): { format: 'bech32m' | 'hex', bytes: Uint8Array } {
   if (typeof address !== 'string') {
     throw new Error('Address must be a string');
   }
 
-  if (address !== address.toLowerCase()) {
-    throw new Error(`Uppercase characters are not allowed in addresses: ${address}`);
+  if (address.startsWith('om1z') || address.startsWith('om1')) {
+    return { format: 'bech32m', bytes: fromOmneAddress(address) };
   }
 
-  if (address.startsWith('omne1')) {
-    return {
-      format: 'omne',
-      bytes: fromOmneAddress(address)
-    };
-  } else if (/^[0-9a-f]{40}$/.test(address)) {
-    return {
-      format: 'hex',
-      bytes: hexToBuffer(address)
-    };
-  } else {
-    throw new Error(`Unsupported address format: ${address}`);
+  // Raw 40-char lowercase hex (no prefix)
+  if (/^[0-9a-f]{40}$/.test(address)) {
+    return { format: 'hex', bytes: hexToBuffer(address) };
   }
+
+  throw new Error(`Unsupported address format: ${address}`);
 }
 
 /**
- * Validate address format (supports both Omne and hex)
+ * Validate address format (om1z bech32m, legacy omne1, or raw hex)
  */
 export function isValidAddress(address: string): boolean {
   if (typeof address !== 'string') {
@@ -136,10 +147,10 @@ export function isValidAddress(address: string): boolean {
 }
 
 /**
- * Validate Omne address format specifically
+ * Validate om1z bech32m address format specifically.
  */
 export function isValidOmneAddress(address: string): boolean {
-  if (typeof address !== 'string' || !address.startsWith('omne1')) {
+  if (typeof address !== 'string' || !address.startsWith('om1z')) {
     return false;
   }
 
@@ -163,25 +174,19 @@ export function isValidHexAddress(address: string): boolean {
 }
 
 /**
- * Normalize address to Omne format.
+ * Normalize any supported address format to canonical om1z bech32m.
  */
 export function normalizeAddress(address: string): string {
   const parsed = parseAddress(address);
-  
-  if (parsed.format === 'omne') {
-    return address;
-  } else {
-    return toOmneAddress(parsed.bytes);
-  }
+  return toOmneAddress(parsed.bytes);
 }
 
 /**
  * Verify an ed25519 signature against a message and expected address.
  *
  * Ed25519 does not support public key recovery from a signature alone;
- * instead the caller must supply the signer's public key so we can
- * verify the signature and then check that the public key maps to the
- * expected Omne address.
+ * the caller supplies the signer's public key so we can verify the
+ * signature and confirm the public key maps to the expected om1z address.
  */
 export function verifyEd25519Signature(
   message: string,
@@ -209,13 +214,14 @@ export function verifyEd25519Signature(
       return false;
     }
 
-    // Derive the address from the public key and compare.
+    // Derive the om1z address from the public key and compare.
     const addrPayload = new Uint8Array(15 + 32);
     addrPayload.set(utf8ToBytes('OMNE_ADDRESS_V1'), 0);
     addrPayload.set(pubKeyBytes, 15);
     const addrHash = sha256(addrPayload);
     const derivedAddress = toOmneAddress(addrHash.slice(0, 20));
 
+    // normalizeAddress handles both om1z and legacy omne1 input
     return derivedAddress === normalizeAddress(expectedAddress);
   } catch {
     return false;
