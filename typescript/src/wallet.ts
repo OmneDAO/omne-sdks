@@ -16,7 +16,7 @@ import { hmac } from '@noble/hashes/hmac';
 import { sha256 } from '@noble/hashes/sha256';
 import { sha512 } from '@noble/hashes/sha512';
 
-import { WalletConfig, Keystore, Transaction } from './types';
+import { WalletConfig, Keystore, Transaction, SignTransactionOptions } from './types';
 import { WalletError, ValidationError } from './errors';
 import { toOmneAddress, bufferToHex, hexToBuffer, fromOmneAddress } from './utils';
 import {
@@ -53,13 +53,20 @@ export class WalletAccount {
     this.address = this.generateAddress(publicKeyBytes);
   }
 
-  signTransaction(transaction: Transaction): Transaction & { signature: string } {
-    const txHash = this.hashTransaction(transaction);
+  signTransaction(
+    transaction: Transaction,
+    opts?: SignTransactionOptions
+  ): Transaction & { signature: string; publicKey: string; chainId: number } {
+    const chainId = resolveChainId(transaction, opts);
+    const normalized: Transaction = { ...transaction, chainId };
+    const txHash = this.hashTransaction(normalized);
     const signature = this.signHash(txHash);
 
     return {
-      ...transaction,
-      signature: bufferToHex(signature)
+      ...normalized,
+      chainId,
+      signature: bufferToHex(signature),
+      publicKey: this.publicKey
     };
   }
 
@@ -149,8 +156,16 @@ export class WalletAccount {
   }
 
   private hashTransaction(transaction: Transaction): Uint8Array {
-    // Canonical transaction hash matching the Rust-side hash_transaction().
-    // Fields are hashed in the same order and encoding (little-endian numbers).
+    // Canonical transaction hash matching the Rust-side hash_transaction()
+    // in omne-blockchain/src/rpc/wallet.rs. Fields are hashed in the same
+    // order and encoding (little-endian numbers). chain_id is a per-tx
+    // field here and on the Rust side — callers must set it before signing.
+    if (transaction.chainId === undefined) {
+      throw new WalletError(
+        'chainId must be set on Transaction before signing (e.g. 3 for Ignis)',
+        'sign_transaction'
+      );
+    }
     const fromBytes = fromOmneAddress(transaction.from);
     const toBytes = transaction.to ? fromOmneAddress(transaction.to) : new Uint8Array(0);
 
@@ -159,7 +174,7 @@ export class WalletAccount {
     const gasLimitBuf = le64(BigInt(transaction.gasLimit));
     const gasPriceBuf = le64(BigInt(transaction.gasPrice));
     const nonceBuf = le64(BigInt(transaction.nonce));
-    const chainIdBuf = le64(BigInt(1)); // chain_id = 1 (matches Rust)
+    const chainIdBuf = le64(BigInt(transaction.chainId));
     const dataBuf = transaction.data
       ? hexToBuffer(transaction.data)
       : new Uint8Array(0);
@@ -191,6 +206,32 @@ export class WalletAccount {
     const hex = bufferToHex(bytes);
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
   }
+}
+
+/**
+ * Resolve the chainId used when signing a transaction. Resolution order:
+ *   1. opts.chainId (explicit per-call override)
+ *   2. transaction.chainId (per-tx field)
+ *   3. throw — no silent default. Callers must pick a chain explicitly.
+ */
+function resolveChainId(
+  transaction: Transaction,
+  opts?: SignTransactionOptions
+): number {
+  const chainId = opts?.chainId ?? transaction.chainId;
+  if (chainId === undefined) {
+    throw new WalletError(
+      'chainId required for signing — pass opts.chainId or set Transaction.chainId (e.g. 3 for Ignis)',
+      'sign_transaction'
+    );
+  }
+  if (!Number.isInteger(chainId) || chainId < 0) {
+    throw new WalletError(
+      `Invalid chainId: ${chainId} — must be a non-negative integer`,
+      'sign_transaction'
+    );
+  }
+  return chainId;
 }
 
 /**
@@ -349,9 +390,13 @@ export class Wallet {
     return accounts;
   }
 
-  signTransaction(transaction: Transaction, accountIndex: number = 0): Transaction & { signature: string } {
+  signTransaction(
+    transaction: Transaction,
+    accountIndex: number = 0,
+    opts?: SignTransactionOptions
+  ): Transaction & { signature: string; publicKey: string; chainId: number } {
     const account = this.getAccount(accountIndex);
-    return account.signTransaction(transaction);
+    return account.signTransaction(transaction, opts);
   }
 
   async exportWallet(password: string): Promise<{ mnemonic: string; accounts: Keystore[] }> {

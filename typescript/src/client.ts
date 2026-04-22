@@ -907,8 +907,95 @@ export class OmneClient {
     };
 
     const txHash = await this.request('omne_sendTransaction', [normalizedTransaction]);
-    
+
     // Wait for confirmation
+    return await this.waitForTransaction(txHash);
+  }
+
+  /**
+   * Submit a pre-signed transaction without re-signing or re-deriving any
+   * field. The node reconstructs the canonical hash preimage from the wire
+   * payload and verifies the supplied ed25519 signature against it, so every
+   * signed field (addresses, value, gas, nonce, chainId, data) must be passed
+   * through byte-for-byte.
+   *
+   * Use when the signer and submitter are different actors — e.g. a Blox Pay
+   * customer signs locally under a passkey-gated key and the merchant backend
+   * relays the payload to Ignis. The customer's key never touches the server.
+   *
+   * Expects the output of WalletAccount.signTransaction — a Transaction with
+   * flat `signature`, `publicKey`, and `chainId` fields. The client repackages
+   * the signature into the nested `{ signature: { signature, publicKey } }`
+   * wire shape the node's parse_and_validate_transaction expects.
+   */
+  async sendRawTransaction(
+    signedTx: Transaction & { signature: string; publicKey: string; chainId: number }
+  ): Promise<TransactionReceipt> {
+    if (!signedTx || typeof signedTx !== 'object') {
+      throw new ValidationError('sendRawTransaction requires a signed transaction object');
+    }
+    if (typeof signedTx.signature !== 'string' || !/^[0-9a-f]{128}$/.test(signedTx.signature)) {
+      throw new ValidationError(
+        'Pre-signed transaction is missing a valid 64-byte hex ed25519 signature',
+        'signature',
+        signedTx.signature
+      );
+    }
+    if (typeof signedTx.publicKey !== 'string' || !/^[0-9a-f]{64}$/.test(signedTx.publicKey)) {
+      throw new ValidationError(
+        'Pre-signed transaction is missing a valid 32-byte hex ed25519 public key',
+        'publicKey',
+        signedTx.publicKey
+      );
+    }
+    if (typeof signedTx.chainId !== 'number' || !Number.isInteger(signedTx.chainId) || signedTx.chainId < 0) {
+      throw new ValidationError(
+        'Pre-signed transaction must carry the chainId it was signed under',
+        'chainId',
+        signedTx.chainId
+      );
+    }
+
+    // Addresses are canonical om1z on the signing side — passed through
+    // unchanged so the on-node hash preimage matches what the wallet signed.
+    const wirePayload: Record<string, unknown> = {
+      from: signedTx.from,
+      to: signedTx.to,
+      value: signedTx.value,
+      gasLimit: signedTx.gasLimit,
+      gasPrice: signedTx.gasPrice,
+      nonce: signedTx.nonce,
+      chainId: signedTx.chainId,
+      data: signedTx.data ?? '',
+      signature: {
+        signature: signedTx.signature,
+        publicKey: signedTx.publicKey,
+      },
+    };
+    if (signedTx.priority) {
+      wirePayload.priority = signedTx.priority;
+    }
+    if (signedTx.layer) {
+      wirePayload.layer = signedTx.layer;
+    }
+
+    const submission = await this.request<{ transactionHash?: string } | string>(
+      'omne_sendTransaction',
+      [wirePayload]
+    );
+
+    const txHash = typeof submission === 'string'
+      ? submission
+      : submission?.transactionHash;
+
+    if (!txHash || typeof txHash !== 'string') {
+      throw new NetworkError(
+        'Node accepted transaction but did not return a transaction hash',
+        undefined,
+        submission
+      );
+    }
+
     return await this.waitForTransaction(txHash);
   }
 
