@@ -95,6 +95,15 @@ export interface Transaction {
   data?: string;
   priority?: TransactionPriority;
   layer?: ConsensusLayer;
+  // chainId must be set before signing. Matches Rust transaction.chain_id
+  // (per-tx field, included in the signed hash preimage). Ignis devnet = 3.
+  chainId?: number;
+  signature?: string;
+  publicKey?: string;
+}
+
+export interface SignTransactionOptions {
+  chainId?: number;
 }
 
 /**

@@ -85,6 +85,14 @@ describe('Utility Functions', () => {
       expect(isValidAddress(sampleHex.toUpperCase())).toBe(false);
     });
 
+    test('legacy omne1 addresses are rejected (Ignis is om1z-only)', () => {
+      const legacy = 'omne1' + sampleHex;
+      expect(isValidAddress(legacy)).toBe(false);
+      expect(isValidOmneAddress(legacy)).toBe(false);
+      expect(() => fromOmneAddress(legacy)).toThrow();
+      expect(() => normalizeAddress(legacy)).toThrow();
+    });
+
     test('om1z bech32m address encoding/decoding', () => {
       const testBytes = new Uint8Array([
         0x74, 0x2d, 0x35, 0xcc, 0x4b, 0xf6, 0x88, 0xae, 0xe6, 0xf7,
