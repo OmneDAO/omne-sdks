@@ -824,6 +824,33 @@ export class OmneClient {
   }
 
   /**
+   * Generic JSON-RPC escape hatch.
+   *
+   * Use this to call any node RPC method that is not yet wrapped in a
+   * typed client method — for example, `faucet_request`, custom node
+   * extensions, or experimental methods on devnet. Prefer the typed
+   * methods (`getBalance`, `transfer`, etc.) when they exist; they add
+   * parameter validation and response shaping this generic method does
+   * not.
+   *
+   * @example
+   * ```ts
+   * const result = await client.rpcCall<{ omcMinted: string; ogtMinted: string; status: string }>(
+   *   'faucet_request',
+   *   ['omne1yourAddress...']
+   * );
+   * ```
+   *
+   * @param method - JSON-RPC method name (e.g. `'faucet_request'`, `'omne_gasPrice'`)
+   * @param params - Optional positional parameters array
+   * @returns The `result` field from the JSON-RPC response, unwrapped
+   * @throws NetworkError, RPCError, ValidationError as appropriate
+   */
+  async rpcCall<T = any>(method: string, params?: any[]): Promise<T> {
+    return await this.request<T>(method, params);
+  }
+
+  /**
    * Get network information
    */
   async getNetworkInfo(): Promise<NetworkInfo> {
