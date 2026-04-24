@@ -140,16 +140,25 @@ export { setPlatformProviders } from './platform/context';
 export type { PlatformProviders } from './platform/providers';
 
 // SDK version and metadata
-export const SDK_VERSION = '0.3.0';
+export const SDK_VERSION = '1.1.0';
 export const SUPPORTED_NETWORKS = ['primum', 'testum', 'principalis'] as const;
 
 /**
- * Default configuration for different networks
+ * Default configuration for different networks.
+ *
+ * Note the deliberate separation between SDK environment-role keys
+ * (`primum`, `testum`, `principalis`) and deployed-network codenames
+ * (Ignis devnet, Testum testnet, Primum mainnet). To connect to the live
+ * **Ignis** devnet, construct the client directly with the RPC URL:
+ *   new OmneClient('wss://rpc.ignis.omnechain.network')
+ *
+ * The `createClient(role)` factory targets role defaults; override URLs
+ * for deployed networks as needed.
  */
 export const DEFAULT_NETWORK_CONFIGS = {
   primum: {
     chainId: 0,
-    url: 'ws://localhost:8545',
+    url: 'ws://localhost:9944',
     gasPrice: '1000', // 1000 quar per gas
     features: {
       dualLayerConsensus: true,
