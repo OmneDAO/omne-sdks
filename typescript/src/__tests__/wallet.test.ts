@@ -18,8 +18,8 @@ describe('Wallet', () => {
     expect(account.privateKey).toBe(accountAgain.privateKey);
     expect(account.address).toBe(accountAgain.address);
     expect(account.address.startsWith('om1z')).toBe(true);
-    // Public key is raw hex, no 0x prefix (Omne convention).
-    expect(account.publicKey).toMatch(/^[0-9a-f]{64}$/);
+    // ML-DSA-44 public key: 1312 bytes = 2624 hex chars, no 0x prefix.
+    expect(account.publicKey).toMatch(/^[0-9a-f]{2624}$/);
   });
 
   it('exports and imports keystore for an account', async () => {
@@ -69,7 +69,8 @@ describe('Wallet', () => {
     it('uses transaction.chainId when set on the tx', () => {
       const signed = account.signTransaction({ ...baseTx(), chainId: 3 });
       expect(signed.chainId).toBe(3);
-      expect(signed.signature).toMatch(/^[0-9a-f]{128}$/);
+      // ML-DSA-44 signature: 2420 bytes = 4840 hex chars.
+      expect(signed.signature).toMatch(/^[0-9a-f]{4840}$/);
       expect(signed.publicKey).toBe(account.publicKey);
     });
 

@@ -18,15 +18,19 @@ import {
   parseAddress,
   calculateGasCost,
   estimateGas,
-  verifyEd25519Signature,
+  verifyMlDsa44Signature,
   verifyMessageSignature
 } from '../utils';
 import { WalletAccount } from '../wallet';
 import { hexToBuffer, bufferToHex } from '../utils';
 
+// ML-DSA-44 (FIPS 204) byte lengths.
+const ML_DSA_44_SIG_BYTES = 2420;
+
 describe('Utility Functions', () => {
-  const sampleHex = '742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e';
-  // Canonical om1z bech32m encoding of the same 20-byte address
+  // 32-byte address (64 hex chars) — the post-quantum address width.
+  const sampleHex = '742d35cc4bf688aee6f7c3c3a6b1c98aaee5e84e0011223344556677889900aa';
+  // Canonical om1z bech32m encoding of the same 32-byte address
   const sampleOmne = toOmneAddress(hexToBuffer(sampleHex));
 
   describe('Quar conversion', () => {
@@ -96,7 +100,9 @@ describe('Utility Functions', () => {
     test('om1z bech32m address encoding/decoding', () => {
       const testBytes = new Uint8Array([
         0x74, 0x2d, 0x35, 0xcc, 0x4b, 0xf6, 0x88, 0xae, 0xe6, 0xf7,
-        0xc3, 0xc3, 0xa6, 0xb1, 0xc9, 0x8a, 0xae, 0xe5, 0xe8, 0x4e
+        0xc3, 0xc3, 0xa6, 0xb1, 0xc9, 0x8a, 0xae, 0xe5, 0xe8, 0x4e,
+        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99,
+        0x00, 0xaa
       ]);
 
       const omneAddr = toOmneAddress(testBytes);
@@ -115,7 +121,7 @@ describe('Utility Functions', () => {
     test('parseAddress handles om1z bech32m and raw hex formats', () => {
       const hexResult = parseAddress(sampleHex);
       expect(hexResult.format).toBe('hex');
-      expect(hexResult.bytes.length).toBe(20);
+      expect(hexResult.bytes.length).toBe(32);
 
       const omneAddr = toOmneAddress(hexResult.bytes);
       const omneResult = parseAddress(omneAddr);
@@ -150,34 +156,35 @@ describe('Utility Functions', () => {
   });
 
   describe('Message signatures', () => {
-    test('verifies ed25519 signed message against signer address', () => {
+    test('verifies ML-DSA-44 signed message against signer address', () => {
       const account = WalletAccount.fromPrivateKey('1'.repeat(64));
       const message = 'hello-omne';
       const signature = account.signMessage(message);
 
-      // Extract the signature and public key components.
+      // Extract the signature and public key components (2420-byte sig
+      // followed by the 1312-byte public key).
       const combined = hexToBuffer(signature);
-      const sigHex = bufferToHex(combined.slice(0, 64));
-      const pubHex = bufferToHex(combined.slice(64));
+      const sigHex = bufferToHex(combined.slice(0, ML_DSA_44_SIG_BYTES));
+      const pubHex = bufferToHex(combined.slice(ML_DSA_44_SIG_BYTES));
 
       // Explicit verification with separate sig and pubkey.
-      expect(verifyEd25519Signature(message, sigHex, pubHex, account.address)).toBe(true);
+      expect(verifyMlDsa44Signature(message, sigHex, pubHex, account.address)).toBe(true);
 
-      // Backward-compat wrapper accepts the combined 96-byte hex.
+      // Wrapper accepts the combined sig||pubkey envelope.
       expect(verifyMessageSignature(message, signature, account.address)).toBe(true);
       expect(verifyMessageSignature(message, signature, sampleOmne)).toBe(false);
     });
 
-    test('verifies ed25519 signed message with different key', () => {
+    test('verifies ML-DSA-44 signed message with different key', () => {
       const account = WalletAccount.fromPrivateKey('2'.repeat(64));
       const message = 'deadbeef';
       const signature = account.signMessage(message);
 
       const combined = hexToBuffer(signature);
-      const sigHex = bufferToHex(combined.slice(0, 64));
-      const pubHex = bufferToHex(combined.slice(64));
+      const sigHex = bufferToHex(combined.slice(0, ML_DSA_44_SIG_BYTES));
+      const pubHex = bufferToHex(combined.slice(ML_DSA_44_SIG_BYTES));
 
-      expect(verifyEd25519Signature(message, sigHex, pubHex, account.address)).toBe(true);
+      expect(verifyMlDsa44Signature(message, sigHex, pubHex, account.address)).toBe(true);
     });
   });
 });

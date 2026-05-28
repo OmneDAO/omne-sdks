@@ -190,7 +190,7 @@ export class ValidationError extends OmneSDKError {
       `Invalid address format: ${address}`,
       'address',
       address,
-      { expectedFormat: 'omne1 followed by 40 hex characters, or 40-char raw hex' }
+      { expectedFormat: 'om1z… bech32m address (HRP "om", witness version 2), or raw hex' }
     );
   }
 

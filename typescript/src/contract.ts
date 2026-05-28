@@ -13,19 +13,19 @@
  * const client = new OmneClient({ url: 'http://localhost:8545' });
  *
  * // Interact with a deployed contract
- * const token = new OmneContract(client, 'omne1abc...def');
+ * const token = new OmneContract(client, 'om1zabc...def');
  *
  * // Read-only query — does not consume gas or modify state
  * const result = await token.query('balanceOf', [
- *   AbiEncode.address('omne1user...')
+ *   AbiEncode.address('om1zuser...')
  * ]);
  *
  * // State-modifying call — sent as a signed transaction
  * const receipt = await token.call({
- *   from: 'omne1sender...',
+ *   from: 'om1zsender...',
  *   method: 'transfer',
  *   args: [
- *     AbiEncode.address('omne1recipient...'),
+ *     AbiEncode.address('om1zrecipient...'),
  *     AbiEncode.u128(1000n)
  *   ],
  *   gasLimit: 100_000,
@@ -113,19 +113,19 @@ export const AbiEncode = {
     return { type: ArgType.Bool, data: new Uint8Array([value ? 0x01 : 0x00]) };
   },
 
-  /** Encode an Omne address (20 bytes) from its omne1... string form */
+  /** Encode an Omne address (32 bytes) from its om1z... string form */
   address(omneAddress: string): AbiArgument {
     const parsed = parseAddress(omneAddress);
-    if (parsed.bytes.length !== 20) {
-      throw new Error(`Address must be 20 bytes, got ${parsed.bytes.length}`);
+    if (parsed.bytes.length !== 32) {
+      throw new Error(`Address must be 32 bytes, got ${parsed.bytes.length}`);
     }
     return { type: ArgType.Address, data: parsed.bytes };
   },
 
-  /** Encode an address directly from 20 raw bytes */
+  /** Encode an address directly from 32 raw bytes */
   addressBytes(bytes: Uint8Array): AbiArgument {
-    if (bytes.length !== 20) {
-      throw new Error(`Address must be 20 bytes, got ${bytes.length}`);
+    if (bytes.length !== 32) {
+      throw new Error(`Address must be 32 bytes, got ${bytes.length}`);
     }
     return { type: ArgType.Address, data: bytes };
   },
