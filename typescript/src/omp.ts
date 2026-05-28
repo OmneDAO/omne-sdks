@@ -346,13 +346,13 @@ async function readFileBytes(filePath: string): Promise<Uint8Array> {
  *
  * // Store a file (Node.js — pass a file path)
  * const result = await omp.store('/path/to/image.png', {
- *   owner: 'omne1...',
+ *   owner: 'om1z...',
  *   escrowOgt: 5,
  * });
  *
  * // Store from bytes (works in browser too)
  * const result2 = await omp.storeBytes(uint8Array, {
- *   owner: 'omne1...',
+ *   owner: 'om1z...',
  *   escrowOgt: 5,
  * });
  *

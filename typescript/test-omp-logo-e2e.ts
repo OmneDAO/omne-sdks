@@ -50,7 +50,7 @@ async function main() {
   console.log(`3. Storing asset on-chain (assetId: ${ASSET_ID})...`);
   const result = await omp.storeBytes(data, {
     assetId: ASSET_ID,
-    owner: 'omne144b9effc104ac893c18320280976f69ca28b1814', // DAO treasury
+    owner: 'om1z44b9effc104ac893c18320280976f69ca28b1814', // DAO treasury
     escrowOgt: 5,
     onProgress: (i, total) => {
       console.log(`   chunk ${i + 1}/${total} uploaded`);

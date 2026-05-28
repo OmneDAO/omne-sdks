@@ -20,7 +20,7 @@ const AUTH_HEADERS = {
   'X-Omne-Nonce': `e2e-${Date.now()}`,
 };
 
-const TEST_OWNER = 'omne1e2e_test_omp_owner_address_00001';
+const TEST_OWNER = 'om1ze2e_test_omp_owner_address_00001';
 
 /** Manual JSON-RPC call helper (for faucet, which isn't in OmpClient). */
 async function rpcCall(method: string, params: unknown[]): Promise<unknown> {

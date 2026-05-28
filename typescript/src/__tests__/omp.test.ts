@@ -192,7 +192,7 @@ describe('OmpClient.storeBytes', () => {
     const data = makeTestData(OMP_CHUNK_SIZE + 100); // 2 chunks
 
     const result = await client.storeBytes(data, {
-      owner: 'omne1testowner',
+      owner: 'om1ztestowner',
       escrowOgt: 5,
     });
 
@@ -205,7 +205,7 @@ describe('OmpClient.storeBytes', () => {
 
     // Verify the store params
     const storeParams = rpcCalls[0].params[0] as Record<string, unknown>;
-    expect(storeParams.owner).toBe('omne1testowner');
+    expect(storeParams.owner).toBe('om1ztestowner');
     expect(storeParams.escrowOgt).toBe(5);
     expect(storeParams.chunkCount).toBe(2);
     expect(storeParams.redundancy).toBe(2);
@@ -233,7 +233,7 @@ describe('OmpClient.storeBytes', () => {
     const progress: Array<[number, number]> = [];
 
     await client.storeBytes(data, {
-      owner: 'omne1testowner',
+      owner: 'om1ztestowner',
       escrowOgt: 10,
       onProgress: (i, total) => progress.push([i, total]),
     });
@@ -246,7 +246,7 @@ describe('OmpClient.storeBytes', () => {
 
     const result = await client.storeBytes(data, {
       assetId: 'my-custom-id',
-      owner: 'omne1testowner',
+      owner: 'om1ztestowner',
       escrowOgt: 1,
     });
 
@@ -293,7 +293,7 @@ describe('OmpClient.verifyBytes', () => {
         id: body.id,
         result: {
           assetId: 'test-asset',
-          owner: 'omne1test',
+          owner: 'om1ztest',
           contentHash: preparedContentHash,
           merkleRoot: preparedMerkleRoot,
           totalSize: testData.length,

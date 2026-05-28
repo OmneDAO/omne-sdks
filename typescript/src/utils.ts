@@ -9,7 +9,7 @@ import { getPlatformProviders } from './platform/context';
 import Big from 'big.js';
 import { utf8ToBytes } from '@noble/hashes/utils';
 import { sha256 } from '@noble/hashes/sha256';
-import { ed25519 } from '@noble/curves/ed25519';
+import { ml_dsa44 } from '@noble/post-quantum/ml-dsa';
 import { bech32m } from '@scure/base';
 
 import { secureRandomBytes } from './secure-crypto';
@@ -21,11 +21,34 @@ Big.RM = 1;  // Round down
 // ── om1z address constants ─────────────────────────────────────────────────
 // All Omne addresses use bech32m encoding with HRP "om" and witness version 2.
 // Witness version 2 maps to character 'z' in the bech32 alphabet, yielding
-// the canonical prefix "om1z".  The 20-byte payload is the first 20 bytes
-// of SHA-256("OMNE_ADDRESS_V1" || ed25519_pubkey).
+// the canonical prefix "om1z".  The 32-byte payload is the full SHA-256 digest
+// of `"OMNE_PQC_ADDRESS_V1" || ml_dsa_44_pubkey`.  Omne is post-quantum from
+// the ground up — addresses are 32 bytes (256-bit) so Grover's algorithm
+// leaves a 128-bit second-preimage margin.
 const ADDRESS_HRP = 'om';
 const ADDRESS_WITNESS_VERSION = 2; // bech32 alphabet index 2 = 'z'
-const ADDRESS_PAYLOAD_BYTES = 20;
+const ADDRESS_PAYLOAD_BYTES = 32;
+
+// Domain-separation tag for ML-DSA-44 address derivation. Must match the
+// Rust-side derivation in omne-blockchain (PqcAccountAddress).
+const ADDRESS_DOMAIN_TAG = 'OMNE_PQC_ADDRESS_V1';
+
+/**
+ * Derive the canonical 32-byte om1z address from an ML-DSA-44 public key.
+ *
+ * address = SHA-256("OMNE_PQC_ADDRESS_V1" || ml_dsa_44_pubkey)  (full 32 bytes)
+ *
+ * Single source of truth shared by the wallet and signature verification;
+ * must match the Rust-side `PqcAccountAddress::from_public_key`.
+ */
+export function deriveAddressFromPublicKey(publicKey: Uint8Array): string {
+  const tag = utf8ToBytes(ADDRESS_DOMAIN_TAG);
+  const payload = new Uint8Array(tag.length + publicKey.length);
+  payload.set(tag, 0);
+  payload.set(publicKey, tag.length);
+  // Full 32-byte digest — no truncation.
+  return toOmneAddress(sha256(payload));
+}
 
 /**
  * Quar conversion constants
@@ -73,11 +96,11 @@ export function formatBalance(quarAmount: string | number | Big, decimals: numbe
 }
 
 /**
- * Encode 20-byte address as bech32m om1z format.
+ * Encode a 32-byte address as bech32m om1z format.
  *
  * Format: om1z<data><checksum>
  *   - HRP "om" + separator "1" + witness version 2 ('z') + bech32m data
- *   - 20-byte payload → ~42 character address
+ *   - 32-byte payload → ~59 character address
  */
 export function toOmneAddress(addressBytes: Uint8Array): string {
   if (addressBytes.length !== ADDRESS_PAYLOAD_BYTES) {
@@ -90,7 +113,7 @@ export function toOmneAddress(addressBytes: Uint8Array): string {
 }
 
 /**
- * Decode an om1z bech32m address to its 20-byte payload.
+ * Decode an om1z bech32m address to its 32-byte payload.
  */
 export function fromOmneAddress(address: string): Uint8Array {
   if (!address.startsWith('om1')) {
@@ -111,7 +134,7 @@ export function fromOmneAddress(address: string): Uint8Array {
 }
 
 /**
- * Parse address string to bytes. Accepts om1z bech32m and raw 40-char hex.
+ * Parse address string to bytes. Accepts om1z bech32m and raw 64-char hex.
  */
 export function parseAddress(address: string): { format: 'bech32m' | 'hex', bytes: Uint8Array } {
   if (typeof address !== 'string') {
@@ -122,8 +145,8 @@ export function parseAddress(address: string): { format: 'bech32m' | 'hex', byte
     return { format: 'bech32m', bytes: fromOmneAddress(address) };
   }
 
-  // Raw 40-char lowercase hex (no prefix)
-  if (/^[0-9a-f]{40}$/.test(address)) {
+  // Raw 64-char lowercase hex (no prefix) — 32-byte address.
+  if (/^[0-9a-f]{64}$/.test(address)) {
     return { format: 'hex', bytes: hexToBuffer(address) };
   }
 
@@ -131,7 +154,9 @@ export function parseAddress(address: string): { format: 'bech32m' | 'hex', byte
 }
 
 /**
- * Validate address format (om1z bech32m, legacy omne1, or raw hex)
+ * Validate address format. Accepts canonical om1z bech32m and raw 64-char
+ * (32-byte) hex only. Legacy `omne1` addresses are intentionally rejected —
+ * Omne is om1z-only.
  */
 export function isValidAddress(address: string): boolean {
   if (typeof address !== 'string') {
@@ -163,14 +188,14 @@ export function isValidOmneAddress(address: string): boolean {
 }
 
 /**
- * Validate raw hex address format (40 lowercase hex chars, no prefix).
+ * Validate raw hex address format (64 lowercase hex chars = 32 bytes, no prefix).
  */
 export function isValidHexAddress(address: string): boolean {
   if (typeof address !== 'string') {
     return false;
   }
 
-  return /^[0-9a-f]{40}$/.test(address);
+  return /^[0-9a-f]{64}$/.test(address);
 }
 
 /**
@@ -181,14 +206,19 @@ export function normalizeAddress(address: string): string {
   return toOmneAddress(parsed.bytes);
 }
 
+// ML-DSA-44 (FIPS 204) byte lengths.
+const ML_DSA_44_SIGNATURE_BYTES = 2420;
+const ML_DSA_44_PUBLIC_KEY_BYTES = 1312;
+
 /**
- * Verify an ed25519 signature against a message and expected address.
+ * Verify an ML-DSA-44 signature against a message and expected address.
  *
- * Ed25519 does not support public key recovery from a signature alone;
- * the caller supplies the signer's public key so we can verify the
- * signature and confirm the public key maps to the expected om1z address.
+ * ML-DSA does not support public key recovery from a signature alone; the
+ * caller supplies the signer's public key so we can verify the signature and
+ * confirm the public key maps to the expected om1z address. The message is
+ * SHA-256-hashed before verification, matching the signer.
  */
-export function verifyEd25519Signature(
+export function verifyMlDsa44Signature(
   message: string,
   signatureHex: string,
   publicKeyHex: string,
@@ -196,33 +226,24 @@ export function verifyEd25519Signature(
 ): boolean {
   try {
     const sigBytes = hexToBuffer(signatureHex);
-    if (sigBytes.length !== 64) {
+    if (sigBytes.length !== ML_DSA_44_SIGNATURE_BYTES) {
       return false;
     }
 
     const pubKeyBytes = hexToBuffer(publicKeyHex);
-    if (pubKeyBytes.length !== 32) {
+    if (pubKeyBytes.length !== ML_DSA_44_PUBLIC_KEY_BYTES) {
       return false;
     }
 
-    const messageBytes = utf8ToBytes(message);
-    const messageHash = sha256(messageBytes);
+    const messageHash = sha256(utf8ToBytes(message));
 
-    // Verify the ed25519 signature.
-    const valid = ed25519.verify(sigBytes, messageHash, pubKeyBytes);
-    if (!valid) {
+    // Verify the ML-DSA-44 signature over the message hash.
+    if (!ml_dsa44.verify(pubKeyBytes, messageHash, sigBytes)) {
       return false;
     }
 
-    // Derive the om1z address from the public key and compare.
-    const addrPayload = new Uint8Array(15 + 32);
-    addrPayload.set(utf8ToBytes('OMNE_ADDRESS_V1'), 0);
-    addrPayload.set(pubKeyBytes, 15);
-    const addrHash = sha256(addrPayload);
-    const derivedAddress = toOmneAddress(addrHash.slice(0, 20));
-
-    // normalizeAddress handles both om1z and legacy omne1 input
-    return derivedAddress === normalizeAddress(expectedAddress);
+    // Confirm the public key maps to the expected om1z address.
+    return deriveAddressFromPublicKey(pubKeyBytes) === normalizeAddress(expectedAddress);
   } catch {
     return false;
   }
@@ -231,19 +252,18 @@ export function verifyEd25519Signature(
 /**
  * Verify a signed message against an expected address.
  *
- * @deprecated Use verifyEd25519Signature() which takes a public key.
- * This wrapper exists for backward compatibility but requires both
- * signature and public key concatenated (64-byte sig + 32-byte pubkey = 96 bytes).
+ * Expects the `signMessage` envelope: the 2420-byte ML-DSA-44 signature
+ * followed by the 1312-byte public key (3732 bytes total).
  */
 export function verifyMessageSignature(message: string, signature: string, expectedAddress: string): boolean {
   try {
     const combined = hexToBuffer(signature);
-    if (combined.length !== 96) {
+    if (combined.length !== ML_DSA_44_SIGNATURE_BYTES + ML_DSA_44_PUBLIC_KEY_BYTES) {
       return false;
     }
-    const sigHex = bufferToHex(combined.slice(0, 64));
-    const pubHex = bufferToHex(combined.slice(64));
-    return verifyEd25519Signature(message, sigHex, pubHex, expectedAddress);
+    const sigHex = bufferToHex(combined.slice(0, ML_DSA_44_SIGNATURE_BYTES));
+    const pubHex = bufferToHex(combined.slice(ML_DSA_44_SIGNATURE_BYTES));
+    return verifyMlDsa44Signature(message, sigHex, pubHex, expectedAddress);
   } catch {
     return false;
   }
@@ -479,7 +499,7 @@ export function hexToBuffer(hex: string): Uint8Array {
  * Convert buffer to hex string.
  *
  * Omne convention: raw lowercase hex with no prefix.  The Omne ecosystem
- * does not use the Ethereum "0x" prefix; addresses use "omne1" instead.
+ * does not use the Ethereum "0x" prefix; addresses use the "om1z…" bech32m form.
  */
 export function bufferToHex(buffer: Uint8Array): string {
   return Array.from(buffer).map(b => b.toString(16).padStart(2, '0')).join('');

@@ -2,15 +2,21 @@
  * Wallet implementation for Omne SDK.
  *
  * Provides mnemonic-based HD wallet support with account derivation,
- * keystore export/import, and signing helpers.  All signing uses ed25519 —
- * the sole algorithm across the Omne ecosystem.
+ * keystore export/import, and signing helpers.  All signing uses ML-DSA-44
+ * (FIPS 204) — Omne is post-quantum from the ground up.
  *
- * HD derivation follows SLIP-0010 (ed25519 curve, hardened-only paths).
+ * Key model: a 32-byte seed is the portable secret (what keystores store and
+ * what HD derivation produces). The ML-DSA-44 keypair (1312-byte public key,
+ * 2560-byte secret key) is deterministically expanded from that seed via
+ * `ml_dsa44.keygen(seed)`, so keystores stay small and imports are reproducible.
+ *
+ * HD derivation uses an HMAC-SHA512 hierarchical KDF over the BIP39 seed
+ * (hardened-only paths) to produce each account's 32-byte ML-DSA-44 seed.
  */
 
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from '@scure/bip39';
 import { wordlist as englishWordlist } from '@scure/bip39/wordlists/english';
-import { ed25519 } from '@noble/curves/ed25519';
+import { ml_dsa44 } from '@noble/post-quantum/ml-dsa';
 import { utf8ToBytes } from '@noble/hashes/utils';
 import { hmac } from '@noble/hashes/hmac';
 import { sha256 } from '@noble/hashes/sha256';
@@ -18,7 +24,7 @@ import { sha512 } from '@noble/hashes/sha512';
 
 import { WalletConfig, Keystore, Transaction, SignTransactionOptions } from './types';
 import { WalletError, ValidationError } from './errors';
-import { toOmneAddress, bufferToHex, hexToBuffer, fromOmneAddress } from './utils';
+import { bufferToHex, hexToBuffer, fromOmneAddress, deriveAddressFromPublicKey } from './utils';
 import {
   secureEncrypt,
   secureDecrypt,
@@ -36,8 +42,11 @@ export class WalletAccount {
   public readonly publicKey: string;
   public readonly path?: string;
 
+  /** Expanded 2560-byte ML-DSA-44 secret key (kept in memory, never exported). */
+  private readonly secretKeyBytes: Uint8Array;
+
   constructor(privateKey: string, path?: string) {
-    // ed25519 private key seed is 32 bytes (64 hex chars, raw hex, no prefix).
+    // The portable secret is a 32-byte ML-DSA-44 seed (64 hex chars, raw hex).
     if (privateKey.length !== 64 || !/^[0-9a-f]{64}$/.test(privateKey)) {
       throw WalletError.invalidPrivateKey(privateKey);
     }
@@ -45,12 +54,14 @@ export class WalletAccount {
     this.privateKey = privateKey;
     this.path = path;
 
-    // Derive the ed25519 public key (32 bytes) from the private key seed.
-    const privateKeyBytes = hexToBuffer(privateKey);
-    const publicKeyBytes = ed25519.getPublicKey(privateKeyBytes);
+    // Deterministically expand the seed into an ML-DSA-44 keypair
+    // (public key 1312 bytes, secret key 2560 bytes).
+    const seedBytes = hexToBuffer(privateKey);
+    const { publicKey, secretKey } = ml_dsa44.keygen(seedBytes);
 
-    this.publicKey = bufferToHex(publicKeyBytes);
-    this.address = this.generateAddress(publicKeyBytes);
+    this.secretKeyBytes = secretKey;
+    this.publicKey = bufferToHex(publicKey);
+    this.address = this.generateAddress(publicKey);
   }
 
   signTransaction(
@@ -72,11 +83,11 @@ export class WalletAccount {
 
   signMessage(message: string): string {
     const messageBytes = utf8ToBytes(message);
-    // Hash the message with SHA-256 (consistent with ed25519 ecosystem choice).
+    // Hash the message with SHA-256 before signing.
     const messageHash = sha256(messageBytes);
     const signature = this.signHash(messageHash);
-    // ed25519 has no key recovery, so we concatenate the 32-byte public key
-    // after the 64-byte signature so verifiers can derive the signer address.
+    // ML-DSA has no key recovery, so we concatenate the 1312-byte public key
+    // after the 2420-byte signature so verifiers can derive the signer address.
     const pubKeyBytes = hexToBuffer(this.publicKey);
     const combined = new Uint8Array(signature.length + pubKeyBytes.length);
     combined.set(signature, 0);
@@ -145,14 +156,9 @@ export class WalletAccount {
   }
 
   private generateAddress(publicKey: Uint8Array): string {
-    // Omne address derivation: SHA-256("OMNE_ADDRESS_V1" || ed25519_pubkey)[0..20]
-    // Must match the Rust-side derive_address() in wallet.rs.
-    const payload = new Uint8Array(15 + 32);
-    payload.set(utf8ToBytes('OMNE_ADDRESS_V1'), 0);
-    payload.set(publicKey, 15);
-    const hash = sha256(payload);
-    const addressBytes = hash.slice(0, 20);
-    return toOmneAddress(addressBytes);
+    // Canonical 32-byte om1z derivation, shared with verification and the
+    // Rust-side PqcAccountAddress: SHA-256("OMNE_PQC_ADDRESS_V1" || pubkey).
+    return deriveAddressFromPublicKey(publicKey);
   }
 
   private hashTransaction(transaction: Transaction): Uint8Array {
@@ -193,9 +199,8 @@ export class WalletAccount {
   }
 
   private signHash(hash: Uint8Array): Uint8Array {
-    // ed25519 signature: 64 bytes, no recovery ID.
-    const privateKeyBytes = hexToBuffer(this.privateKey);
-    return ed25519.sign(hash, privateKeyBytes);
+    // ML-DSA-44 signature: 2420 bytes, no recovery.
+    return ml_dsa44.sign(this.secretKeyBytes, hash);
   }
 
   private generateUUID(): string {
@@ -259,28 +264,30 @@ function le128(n: bigint): Uint8Array {
 }
 
 /**
- * SLIP-0010 ed25519 HD key derivation.
+ * HMAC-SHA512 hierarchical seed derivation (SLIP-0010 structure, hardened-only).
  *
- * Derives a child private key from a parent key + chain code at a
- * hardened-only index.  The master key is obtained via
- * HMAC-SHA512("ed25519 seed", BIP39 seed).
+ * Each node yields a 32-byte seed + 32-byte chain code. The leaf 32-byte seed
+ * is fed to `ml_dsa44.keygen` to produce the account's ML-DSA-44 keypair. The
+ * master node is HMAC-SHA512("omne ml-dsa44 seed", BIP39 seed); children chain
+ * via HMAC-SHA512(chainCode, 0x00 || parentSeed || index_be) at hardened
+ * indices only.
  */
-interface Slip0010Key {
-  privateKey: Uint8Array; // 32 bytes
+interface HdNode {
+  seed: Uint8Array;       // 32 bytes — ML-DSA-44 keygen seed at this node
   chainCode: Uint8Array;  // 32 bytes
 }
 
-function slip0010Master(seed: Uint8Array): Slip0010Key {
-  const I = hmac(sha512, utf8ToBytes('ed25519 seed'), seed);
-  return { privateKey: I.slice(0, 32), chainCode: I.slice(32) };
+function hdMaster(seed: Uint8Array): HdNode {
+  const I = hmac(sha512, utf8ToBytes('omne ml-dsa44 seed'), seed);
+  return { seed: I.slice(0, 32), chainCode: I.slice(32) };
 }
 
-function slip0010DeriveChild(parent: Slip0010Key, index: number): Slip0010Key {
-  // SLIP-0010 ed25519 only supports hardened derivation.
+function hdDeriveChild(parent: HdNode, index: number): HdNode {
+  // Hardened-only derivation (high bit set).
   const hardenedIndex = (index | 0x80000000) >>> 0;
   const data = new Uint8Array(1 + 32 + 4);
   data[0] = 0x00;
-  data.set(parent.privateKey, 1);
+  data.set(parent.seed, 1);
   // Big-endian index.
   data[33] = (hardenedIndex >>> 24) & 0xff;
   data[34] = (hardenedIndex >>> 16) & 0xff;
@@ -288,35 +295,36 @@ function slip0010DeriveChild(parent: Slip0010Key, index: number): Slip0010Key {
   data[36] = hardenedIndex & 0xff;
 
   const I = hmac(sha512, parent.chainCode, data);
-  return { privateKey: I.slice(0, 32), chainCode: I.slice(32) };
+  return { seed: I.slice(0, 32), chainCode: I.slice(32) };
 }
 
 /**
- * Derive a key at a BIP-44 path using SLIP-0010 ed25519 hardened derivation.
+ * Derive a node at a BIP-44 path using the hardened HMAC-SHA512 KDF.
  * Path format: m / purpose' / coin_type' / account' / change' / index'
- * (all levels are hardened for ed25519).
+ * (all levels are hardened).
  */
-function slip0010DerivePath(seed: Uint8Array, path: string): Slip0010Key {
+function hdDerivePath(seed: Uint8Array, path: string): HdNode {
   const segments = path
     .replace(/^m\/?/, '')
     .split('/')
     .filter(Boolean);
 
-  let key = slip0010Master(seed);
+  let node = hdMaster(seed);
   for (const seg of segments) {
     const idx = parseInt(seg.replace("'", ''), 10);
     if (isNaN(idx)) {
       throw new WalletError(`Invalid derivation path segment: ${seg}`, 'key_derivation');
     }
-    key = slip0010DeriveChild(key, idx);
+    node = hdDeriveChild(node, idx);
   }
-  return key;
+  return node;
 }
 
 /**
  * HD wallet with BIP39 mnemonic support.
  *
- * Uses SLIP-0010 for ed25519 HD key derivation (hardened-only paths).
+ * Uses an HMAC-SHA512 hierarchical KDF (hardened-only paths) to derive each
+ * account's 32-byte ML-DSA-44 seed.
  */
 export class Wallet {
   private mnemonic: string;
@@ -362,11 +370,11 @@ export class Wallet {
       throw new ValidationError(`Account index must be non-negative: ${index}`, 'index', index);
     }
 
-    // SLIP-0010 ed25519 uses all-hardened paths.
+    // Hardened-only HMAC-SHA512 path derivation.
     const path = `${this.basePath}/${index}`;
-    const derived = slip0010DerivePath(this.seed, path);
+    const derived = hdDerivePath(this.seed, path);
 
-    const privateKey = bufferToHex(derived.privateKey);
+    const privateKey = bufferToHex(derived.seed);
     return new WalletAccount(privateKey, path);
   }
 

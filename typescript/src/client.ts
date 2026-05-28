@@ -837,7 +837,7 @@ export class OmneClient {
    * ```ts
    * const result = await client.rpcCall<{ omcMinted: string; ogtMinted: string; status: string }>(
    *   'faucet_request',
-   *   ['omne1yourAddress...']
+   *   ['om1zyourAddress...']
    * );
    * ```
    *
@@ -942,7 +942,7 @@ export class OmneClient {
   /**
    * Submit a pre-signed transaction without re-signing or re-deriving any
    * field. The node reconstructs the canonical hash preimage from the wire
-   * payload and verifies the supplied ed25519 signature against it, so every
+   * payload and verifies the supplied ML-DSA-44 signature against it, so every
    * signed field (addresses, value, gas, nonce, chainId, data) must be passed
    * through byte-for-byte.
    *
@@ -961,16 +961,17 @@ export class OmneClient {
     if (!signedTx || typeof signedTx !== 'object') {
       throw new ValidationError('sendRawTransaction requires a signed transaction object');
     }
-    if (typeof signedTx.signature !== 'string' || !/^[0-9a-f]{128}$/.test(signedTx.signature)) {
+    // ML-DSA-44: 2420-byte signature (4840 hex), 1312-byte public key (2624 hex).
+    if (typeof signedTx.signature !== 'string' || !/^[0-9a-f]{4840}$/.test(signedTx.signature)) {
       throw new ValidationError(
-        'Pre-signed transaction is missing a valid 64-byte hex ed25519 signature',
+        'Pre-signed transaction is missing a valid 2420-byte hex ML-DSA-44 signature',
         'signature',
         signedTx.signature
       );
     }
-    if (typeof signedTx.publicKey !== 'string' || !/^[0-9a-f]{64}$/.test(signedTx.publicKey)) {
+    if (typeof signedTx.publicKey !== 'string' || !/^[0-9a-f]{2624}$/.test(signedTx.publicKey)) {
       throw new ValidationError(
-        'Pre-signed transaction is missing a valid 32-byte hex ed25519 public key',
+        'Pre-signed transaction is missing a valid 1312-byte hex ML-DSA-44 public key',
         'publicKey',
         signedTx.publicKey
       );

@@ -5,7 +5,7 @@ import { GuardrailError } from './errors';
 import { Transaction } from './types';
 
 export interface Signer {
-  // return address in Omne format (e.g., 'omne1...')
+  // return address in Omne format (e.g., 'om1z...')
   getAddress(): Promise<string>;
   // sign a transaction object and return a signed transaction or signature blob
   signTransaction(tx: Transaction): Promise<Transaction & { signature?: string }>;
