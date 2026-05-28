@@ -44,11 +44,10 @@ async function main() {
 
   const wallet = Wallet.generate();
   console.log('\n🔐 Wallet');
-  console.log('  Address (omne1):', wallet.address);
-  const hexAddress = `0x${wallet.address.slice(5)}`;
-  console.log('  Address (hex):', hexAddress);
+  console.log('  Address (om1z):', wallet.address);
 
-  const balance = await rpc('omne_getBalance', [hexAddress]);
+  // The node accepts the canonical om1z address directly — no hex slicing.
+  const balance = await rpc('omne_getBalance', [wallet.address]);
     console.log('\n💰 Balance');
   const balanceQuar = BigInt(balance.balanceQuar ?? balance.balance ?? 0);
   console.log('  OMC:', fromQuar(balanceQuar.toString()).toString());

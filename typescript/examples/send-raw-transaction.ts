@@ -7,7 +7,7 @@
  * passkey-gated key). The "relayer" (a merchant backend, in the Blox Pay
  * case) receives the signed payload and submits it to Ignis. The relayer
  * never sees the customer's private key; the node reconstructs the canonical
- * hash preimage from the wire payload and verifies the ed25519 signature
+ * hash preimage from the wire payload and verifies the ML-DSA-44 signature
  * against it before mempool admission.
  *
  * Usage:

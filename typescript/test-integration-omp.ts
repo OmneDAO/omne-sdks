@@ -38,7 +38,7 @@ async function main() {
   const assetId = `sdk-integ-${Date.now()}`;
   const result = await omp.storeBytes(data, {
     assetId,
-    owner: 'omne1sdk-test',
+    owner: 'om1zsdk-test',
     escrowOgt: 5,
     onProgress: (i, total) => process.stdout.write(`  chunk ${i + 1}/${total}\r`),
   });

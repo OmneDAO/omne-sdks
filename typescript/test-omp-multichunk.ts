@@ -28,7 +28,7 @@ async function main() {
 
   console.log('Uploading...');
   const result = await omp.storeBytes(largeData, {
-    owner: 'omne1multi_chunk_test_owner_0001',
+    owner: 'om1zmulti_chunk_test_owner_0001',
     escrowOgt: 1,
     onProgress: (i, t) => console.log(`  Chunk ${i + 1}/${t}`),
   });
