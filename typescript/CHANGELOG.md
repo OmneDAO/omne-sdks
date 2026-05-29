@@ -35,9 +35,10 @@ All notable changes to `@omne/sdk` will be documented in this file.
   `@scure/bip32`.
 
 ### Note
-- Contract-deployment/compiler **plan** signatures are a separate signing path
-  still on Ed25519 (node-side `plan_signature.rs`); their migration is tracked
-  separately from this wallet/transaction migration.
+- Contract-deployment/compiler **plan** signatures are also ML-DSA-44 now: the
+  node-side `plan_signature.rs`/`deploy-guardrails`, the `omne-cli` signer, and
+  the `pysub-compiler` metadata signer were all migrated. The whole signing
+  surface — wallet, transaction, and deployment plan/metadata — is post-quantum.
 
 ## [1.1.0] - 2026-04-23
 

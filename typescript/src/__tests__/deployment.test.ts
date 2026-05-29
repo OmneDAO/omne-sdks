@@ -512,8 +512,9 @@ describe('OmneClient metadata endpoints (staging smoke)', () => {
 
 function makePlan(): DeploymentPlan {
   const wasmSha = 'ab'.repeat(32);
-  const verifyingKey = 'cd'.repeat(32);
-  const signature = 'ef'.repeat(64);
+  // ML-DSA-44 (FIPS 204) shapes: 1,312-byte public key, 2,420-byte signature.
+  const verifyingKey = 'cd'.repeat(1312);
+  const signature = 'ef'.repeat(2420);
   const digest = '01'.repeat(32);
 
   return {
@@ -555,7 +556,7 @@ function makePlan(): DeploymentPlan {
             host_functions: [],
           },
           signature: {
-            algorithm: 'ed25519',
+            algorithm: 'ml-dsa-44',
             public_key_hex: verifyingKey,
             signature_hex: signature,
             digest_hex: digest,
@@ -579,7 +580,7 @@ function makePlan(): DeploymentPlan {
     },
     services: [],
     signature: {
-      algorithm: 'ed25519',
+      algorithm: 'ml-dsa-44',
       public_key_hex: verifyingKey,
       signature_hex: signature,
     },
