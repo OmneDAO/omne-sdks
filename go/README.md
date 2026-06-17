@@ -7,7 +7,7 @@ yields the same `om1z` address, and Go-produced signatures are accepted by the
 node's verify path (see [`SDK_PARITY.md`](../SDK_PARITY.md)).
 
 ```
-import omne "github.com/OmneDAO/omne-sdks/sdk/go"
+import omne "github.com/OmneDAO/omne-sdks/go"
 ```
 
 The only dependency is [CIRCL](https://github.com/cloudflare/circl)
