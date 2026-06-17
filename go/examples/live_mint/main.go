@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	omne "github.com/OmneDAO/omne-sdks/sdk/go"
+	omne "github.com/OmneDAO/omne-sdks/go"
 )
 
 const (

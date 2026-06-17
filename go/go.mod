@@ -1,4 +1,4 @@
-module github.com/OmneDAO/omne-sdks/sdk/go
+module github.com/OmneDAO/omne-sdks/go
 
 go 1.24
 
