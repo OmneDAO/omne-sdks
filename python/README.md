@@ -17,10 +17,12 @@ pip install -e ".[dev]"   # from sdk/python/
 ```
 
 The only runtime dependency is [`dilithium-py`](https://pypi.org/project/dilithium-py/)
-(pure-Python FIPS 204). Its `_keygen_internal(ξ)` is byte-identical to the TS
-SDK's `@noble/post-quantum` `ml_dsa44.keygen(seed)` — verified across multiple
-seeds, which is why addresses match. Everything else (BIP39, the HD KDF, bech32m,
-the tx hash, the ABI codec) is stdlib.
+(pure-Python FIPS 204), **pinned exact (`==1.4.0`)**. Its public `key_derive(ξ)`
+is byte-identical to the TS SDK's `@noble/post-quantum` `ml_dsa44.keygen(seed)`
+— verified across multiple seeds, which is why addresses match. Because keygen
+output determines `om1z` addresses, the pin is load-bearing: re-run the parity
+tests before bumping it. Everything else (BIP39, the HD KDF, bech32m, the tx
+hash, the ABI codec) is stdlib.
 
 ## Quickstart
 

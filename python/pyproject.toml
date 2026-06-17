@@ -12,9 +12,11 @@ license = { text = "Apache-2.0" }
 authors = [{ name = "OmneDAO" }]
 keywords = ["omne", "blockchain", "post-quantum", "ml-dsa", "fips-204"]
 dependencies = [
-    # FIPS 204 ML-DSA-44. _keygen_internal(xi) is byte-identical to the TS
-    # SDK's @noble/post-quantum ml_dsa44.keygen(seed) (parity-verified).
-    "dilithium-py>=1.1.0",
+    # FIPS 204 ML-DSA-44. key_derive(xi) is byte-identical to the TS SDK's
+    # @noble/post-quantum ml_dsa44.keygen(seed) (parity-verified on 1.4.0).
+    # PINNED EXACT: keygen output determines om1z addresses, so an upstream
+    # release must not silently change it — re-verify parity before bumping.
+    "dilithium-py==1.4.0",
 ]
 
 [project.optional-dependencies]

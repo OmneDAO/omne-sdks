@@ -25,7 +25,7 @@ EXPECTED_ADDRESS = "om1z6n2ydj89l7e6wq3eravk35er4jx66r63q48wfgh4ql6x0p566rvsj22j
 
 
 def _pk_sha256(seed: bytes) -> str:
-    pk, _ = ML_DSA_44._keygen_internal(seed)
+    pk, _ = ML_DSA_44.key_derive(seed)  # public seed-keygen the SDK uses
     return hashlib.sha256(pk).hexdigest()
 
 

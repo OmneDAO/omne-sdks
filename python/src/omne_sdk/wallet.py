@@ -9,10 +9,10 @@ Key derivation is an HMAC-SHA512 hierarchical KDF (hardened-only) over the
 BIP39 seed, identical to the TS wallet — so the same mnemonic yields the same
 addresses across both SDKs (parity-verified in tests/test_parity.py).
 
-ML-DSA-44 keygen/sign come from `dilithium-py`, whose `_keygen_internal(xi)` is
-byte-identical to the TS SDK's `@noble/post-quantum` `ml_dsa44.keygen(seed)`
-(verified). Signatures cross-verify in both directions and are accepted by the
-node's verify path.
+ML-DSA-44 keygen/sign come from `dilithium-py` (pinned), whose public
+`key_derive(xi)` is byte-identical to the TS SDK's `@noble/post-quantum`
+`ml_dsa44.keygen(seed)` (verified). Signatures cross-verify in both directions
+and are accepted by the node's verify path.
 """
 
 from __future__ import annotations
@@ -73,7 +73,11 @@ class WalletAccount:
         self.private_key = private_key.lower()
         self.path = path
         seed = bytes.fromhex(self.private_key)
-        public_key, secret_key = ML_DSA_44._keygen_internal(seed)
+        # key_derive(xi) is dilithium-py's PUBLIC, documented (FIPS 204 §6.1)
+        # deterministic keygen from a 32-byte seed — byte-identical to the TS
+        # SDK's @noble ml_dsa44.keygen(seed). Public API (not the _keygen_internal
+        # private method) so it is part of the lib's stability contract.
+        public_key, secret_key = ML_DSA_44.key_derive(seed)
         self._secret_key = secret_key  # 2560 bytes, never exported
         self.public_key = public_key.hex()
         self.address = derive_address_from_public_key(public_key)
