@@ -6,9 +6,19 @@ encoding, and JSON-RPC client. Parity-matched with the
 addresses, and Python-produced signatures are accepted by the node's verify
 path.
 
-> **Status:** scaffold. Offline crypto/address parity is covered by
-> `tests/test_parity.py`. The live-mesh integration test (a Python account
-> minting/enforcing against the Cinchor contract) is the next milestone.
+> **Status:** validated. Offline crypto/address parity is covered by
+> `tests/test_parity.py` (6/6). Validated against a live 4-validator mesh on
+> 2026-06-17: a Python account (parity-matched, genesis-funded address) built →
+> ML-DSA-44 signed → submitted `mint_permission` to the live `cinchor_permissions`
+> contract; the node accepted the Python signature and the reference-typed
+> `get_principal` return decoded back to the principal address. See
+> [`examples/live_mint.py`](examples/live_mint.py).
+
+> **Calling pysub contracts:** the ABI method name is the contract-qualified
+> selector `"<contract>::<method>"` (e.g. `cinchor_permissions::get_status`).
+> The SDK passes the selector through verbatim — qualify it at the call site.
+> Reference (address/bytes) returns come back as a `0x`-hex `returnValue`;
+> decode addresses with `to_omne_address(bytes.fromhex(rv[2:]))`.
 
 ## Install
 

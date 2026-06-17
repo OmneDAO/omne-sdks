@@ -68,6 +68,11 @@ class OmneClient:
 
     def query_contract(self, contract: str, method: str, args: list[AbiArgument] | None = None,
                        sender: str | None = None) -> dict:
+        """Read-only contract call. `method` is the ABI selector — for pysub
+        contracts the contract-qualified form `"<contract>::<method>"` (e.g.
+        `cinchor_permissions::get_status`). Reference (address/bytes) returns
+        come back as a `0x`-hex `returnValue`.
+        """
         return self.call(contract, encode_contract_call(method, args or []), sender)
 
     def get_transaction_receipt(self, tx_hash: str):
