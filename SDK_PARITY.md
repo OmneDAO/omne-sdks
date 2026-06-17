@@ -40,17 +40,22 @@ big-endian ABI codec (`contract.ts`).
   accepts a Python signature. ✅
 - Scaffold complete: `address`, `wallet`, `transaction`, `abi`, `rpc`.
   `tests/test_parity.py` passes offline (6/6).
-- **Next (live):** a Python account mints/enforces against the Cinchor contract
-  on a mesh — the integration proof, same bar as the TS smoke.
+- **Validated live (2026-06-17):** a Python account built → ML-DSA-44 signed →
+  minted against the live `cinchor_permissions` contract on a 4-validator mesh;
+  node accepted the Python signature, `get_status==1`, `get_principal` decoded
+  back to the principal om1z. ✅  See `sdk/python/examples/live_mint.py`.
 
-### Go — gate verified (spike at `sdk/go/spike`)
+### Go — `sdk/go` (implemented + validated)
 - Crypto: **CIRCL** `github.com/cloudflare/circl/sign/mldsa/mldsa44`
   (`NewKeyFromSeed(*[32]byte)`) — byte-identical to `@noble` on both vectors;
-  node verify (`@noble`) accepts a CIRCL-produced signature; signs with empty
-  ctx. ✅  Run: `cd sdk/go/spike && go run .`
-- **Next (port):** mirror the Python/TS modules in Go — bech32m address codec,
-  BIP39 + hardened HMAC-SHA512 HD KDF, tx build + LE hash, ABI codec, JSON-RPC
-  client — then a live mint.
+  node verify (`@noble`) accepts a CIRCL signature; empty ctx. ✅
+- Package complete: `address`, `wallet`, `transaction`, `abi`, `rpc`. `go test`
+  passes offline, including `TestTxHashParity` — the signing preimage matches
+  the Python SDK byte-for-byte. (Original keygen spike kept at `sdk/go/spike`.)
+- **Validated live (2026-06-17):** a Go account built → ML-DSA-44 signed →
+  minted against the live `cinchor_permissions` contract on a 4-validator mesh;
+  node accepted the Go signature, `get_status==1`, `get_principal` decoded back
+  to the principal om1z. ✅  See `sdk/go/examples/live_mint`.
 
 ## Bespoke keygen package?
 Not needed for correctness in either language — `dilithium-py` and CIRCL both

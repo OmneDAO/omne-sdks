@@ -1,0 +1,4 @@
+# Go build artifacts (never committed)
+/examples/live_mint/live_mint
+*.test
+*.out
