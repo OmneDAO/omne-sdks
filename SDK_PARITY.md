@@ -1,0 +1,59 @@
+# Omne SDK cross-language parity
+
+The TypeScript SDK (`sdk/typescript`, `@omne/sdk`) is the reference. Any other
+language SDK must reproduce the identity stack **byte-for-byte** so the same
+mnemonic yields the same `om1z` address and signatures are accepted by the
+node's verify path. This is a hard requirement: an address is
+`SHA-256("OMNE_PQC_ADDRESS_V1" ‖ pubkey)`, so a one-byte pubkey difference is a
+different account.
+
+## The gate: ML-DSA-44 keygen-from-seed parity
+FIPS 204 `KeyGen_internal(ξ)` is deterministic and standardized, so any two
+compliant libs expand the same 32-byte seed to the same key. Verify it against
+the TS reference (`@noble/post-quantum` `ml_dsa44.keygen(seed)`) before trusting
+a lib. Ground-truth vectors — **public-key SHA-256** for fixed seeds:
+
+| seed (32 bytes) | pubkey SHA-256 |
+|---|---|
+| all `0x00` | `eb4e7302842153b0fa19e8620739ad258af4929c26dd89079a7ec7d4282208e1` |
+| `0x00,0x01,…,0x1f` | `9f107644c1084526af3bc8098680b05499a2325a644e388fb4f970e058d19d46` |
+
+Pubkey length 1312, signature length 2420, secret/seed-key 2560. Sign with an
+**empty context** (`ctx = b""`) to match `@noble` and the node.
+
+Full-chain vector (canonical BIP39 test mnemonic `abandon …× 11… about`,
+account 0):
+- HD seed `d6f8deee4da4c94e81c8e0e53a61f584bf15a540b48516273fc1bfe27006612d`
+- pubkey SHA-256 `a875fccc8fd28539d6249741acef4e3c6333822707e39ed019c49d0fc1fcc5fc`
+- address `om1z6n2ydj89l7e6wq3eravk35er4jx66r63q48wfgh4ql6x0p566rvsj22jgp`
+
+Everything else is standard + fully specified: BIP39 (PBKDF2-HMAC-SHA512), the
+hardened HMAC-SHA512 HD KDF (`wallet.ts`), bech32m address codec, the
+little-endian tx-hash preimage (`wallet.ts` / Rust `hash_transaction`), and the
+big-endian ABI codec (`contract.ts`).
+
+## Status
+
+### Python — `sdk/python` (scaffolded)
+- Crypto: **`dilithium-py`** (`ML_DSA_44._keygen_internal(ξ)`) — byte-identical
+  to `@noble` on both vectors; sign/verify cross-verify both ways; node verify
+  accepts a Python signature. ✅
+- Scaffold complete: `address`, `wallet`, `transaction`, `abi`, `rpc`.
+  `tests/test_parity.py` passes offline (6/6).
+- **Next (live):** a Python account mints/enforces against the Cinchor contract
+  on a mesh — the integration proof, same bar as the TS smoke.
+
+### Go — gate verified (spike at `sdk/go/spike`)
+- Crypto: **CIRCL** `github.com/cloudflare/circl/sign/mldsa/mldsa44`
+  (`NewKeyFromSeed(*[32]byte)`) — byte-identical to `@noble` on both vectors;
+  node verify (`@noble`) accepts a CIRCL-produced signature; signs with empty
+  ctx. ✅  Run: `cd sdk/go/spike && go run .`
+- **Next (port):** mirror the Python/TS modules in Go — bech32m address codec,
+  BIP39 + hardened HMAC-SHA512 HD KDF, tx build + LE hash, ABI codec, JSON-RPC
+  client — then a live mint.
+
+## Bespoke keygen package?
+Not needed for correctness in either language — `dilithium-py` and CIRCL both
+match `@noble` out of the box. A vendored/native backend (liboqs/PQClean) is a
+**drop-in optimization** behind the same keygen/sign interface, justified only
+by throughput, supply-chain control, or packaging — not by parity.

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "omne-sdk"
+version = "0.1.0"
+description = "Omne Python SDK — post-quantum (ML-DSA-44) wallet, ABI, and JSON-RPC client"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "OmneDAO" }]
+keywords = ["omne", "blockchain", "post-quantum", "ml-dsa", "fips-204"]
+dependencies = [
+    # FIPS 204 ML-DSA-44. key_derive(xi) is byte-identical to the TS SDK's
+    # @noble/post-quantum ml_dsa44.keygen(seed) (parity-verified on 1.4.0).
+    # PINNED EXACT: keygen output determines om1z addresses, so an upstream
+    # release must not silently change it — re-verify parity before bumping.
+    "dilithium-py==1.4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/omne_sdk"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
