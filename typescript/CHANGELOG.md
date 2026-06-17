@@ -4,6 +4,18 @@ All notable changes to `@omne/sdk` will be documented in this file.
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-06-17
+
+### Changed
+- Pin identity-critical crypto dependencies to exact versions so an upstream
+  release cannot silently change addresses or signatures under cross-SDK parity:
+  `@scure/base` 1.2.6 (bech32m), `@scure/bip39` 1.6.0 (mnemonic→seed),
+  `@noble/hashes` 1.8.0 (HD KDF / tx hash / address hashing). `@noble/post-quantum`
+  was already pinned at 0.4.1. Resolution is unchanged — these are the versions
+  the prior caret ranges already resolved to.
+
+## [2.0.0] - 2026-06-15
+
 ### Changed — BREAKING: total post-quantum migration (ML-DSA-44)
 - **Signing algorithm is now ML-DSA-44 (FIPS 204)**, replacing Ed25519. Wallet
   public keys are 1312 bytes (2624 hex), signatures are 2420 bytes (4840 hex).
