@@ -141,7 +141,7 @@ export { setPlatformProviders } from './platform/context';
 export type { PlatformProviders } from './platform/providers';
 
 // SDK version and metadata
-export const SDK_VERSION = '1.1.0';
+export const SDK_VERSION = '2.0.1';
 export const SUPPORTED_NETWORKS = ['primum', 'testum', 'principalis'] as const;
 
 /**
