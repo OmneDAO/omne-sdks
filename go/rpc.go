@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -20,10 +21,37 @@ type OmneClient struct {
 	ChainID int
 	HTTP    *http.Client
 	id      int
+
+	// Per-signer client-side nonce cache. The node now increments and reports
+	// real nonces (omne_getNonce), but it only advances after a block commits,
+	// so rapid back-to-back sends within a process must be numbered locally to
+	// stay unique (identical payload + identical nonce ⇒ identical tx hash ⇒
+	// dropped by gossip dedup). Seeded once from the node per address, then
+	// incremented locally; a fresh process re-seeds from the node's committed
+	// nonce, so uniqueness holds across restarts too.
+	nonceMu sync.Mutex
+	nonces  map[string]uint64
 }
 
 func NewOmneClient(rpcURL string, chainID int) *OmneClient {
-	return &OmneClient{RPCURL: rpcURL, ChainID: chainID, HTTP: &http.Client{Timeout: 10 * time.Second}}
+	return &OmneClient{RPCURL: rpcURL, ChainID: chainID, HTTP: &http.Client{Timeout: 10 * time.Second}, nonces: map[string]uint64{}}
+}
+
+// NextNonce allocates the next unique nonce for an address: seeded from the
+// node's committed nonce on first use, then incremented locally per call.
+func (c *OmneClient) NextNonce(address string) (uint64, error) {
+	c.nonceMu.Lock()
+	defer c.nonceMu.Unlock()
+	n, seeded := c.nonces[address]
+	if !seeded {
+		fetched, err := c.GetNonce(address)
+		if err != nil {
+			return 0, err
+		}
+		n = fetched
+	}
+	c.nonces[address] = n + 1
+	return n, nil
 }
 
 func (c *OmneClient) Request(method string, params []any) (json.RawMessage, error) {
@@ -174,7 +202,7 @@ func (c *OmneClient) SendContractCall(
 	var n uint64
 	if nonce != nil {
 		n = *nonce
-	} else if n, err = c.GetNonce(account.Address); err != nil {
+	} else if n, err = c.NextNonce(account.Address); err != nil {
 		return "", err
 	}
 	if gasLimit == 0 {

@@ -29,6 +29,13 @@ class OmneClient:
         self.chain_id = chain_id
         self.timeout = timeout
         self._id = 0
+        # Per-signer client-side nonce cache. The node reports real nonces but
+        # only advances them on block commit, so rapid back-to-back sends within
+        # a process must be numbered locally to stay unique (identical payload +
+        # nonce => identical tx hash => dropped by gossip dedup). Seeded once per
+        # address from the node, then incremented locally; a fresh process
+        # re-seeds from the committed nonce, so uniqueness holds across restarts.
+        self._nonces: dict[str, int] = {}
 
     # ── transport ───────────────────────────────────────────────────
     def request(self, method: str, params: list | None = None):
@@ -59,6 +66,16 @@ class OmneClient:
         except RpcError:
             acct = self.request("omne_getAccount", [address]) or {}
             return int(acct.get("nonce", 0))
+
+    def next_nonce(self, address: str) -> int:
+        """Allocate the next unique nonce for an address: seeded from the node's
+        committed nonce on first use, then incremented locally per call so
+        rapid sends never collide on the tx hash."""
+        if address not in self._nonces:
+            self._nonces[address] = self.get_nonce(address)
+        n = self._nonces[address]
+        self._nonces[address] = n + 1
+        return n
 
     def call(self, to: str, data: str, sender: str | None = None) -> dict:
         call_obj = {"to": to, "data": data}
@@ -119,7 +136,7 @@ class OmneClient:
         nonce: int | None = None,
     ) -> str | None:
         """Build → sign → submit a state-modifying contract call."""
-        resolved_nonce = self.get_nonce(account.address) if nonce is None else nonce
+        resolved_nonce = self.next_nonce(account.address) if nonce is None else nonce
         tx = build_transaction(
             sender=account.address,
             to=contract,

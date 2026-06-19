@@ -264,7 +264,11 @@ export class OmneContract {
       value: options.value ?? '0',
       gasLimit: options.gasLimit ?? 100_000,
       gasPrice: options.gasPrice ?? '1000',
-      nonce: options.nonce ?? 0,
+      // Allocate a unique nonce per call (seeded from the node, incremented
+      // locally) so a repeat of an otherwise-identical call gets a distinct tx
+      // hash and is not dropped by the node's gossip dedup. Explicit override
+      // still honored.
+      nonce: options.nonce ?? (await (this.client as any).nextNonce(options.from)),
       data,
     };
 
