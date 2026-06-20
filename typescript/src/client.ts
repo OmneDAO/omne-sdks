@@ -403,6 +403,14 @@ export class OmneClient {
   private subscriptions = new Map<string, Subscription>();
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 5;
+  // Per-signer client-side nonce cache. The node reports real nonces
+  // (omne_getNonce) but only advances them on block commit, so rapid
+  // back-to-back sends within a process must be numbered locally to stay
+  // unique (identical payload + nonce ⇒ identical tx hash ⇒ dropped by gossip
+  // dedup). Seeded once per address from the node, then incremented locally;
+  // a fresh process re-seeds from the committed nonce, so uniqueness holds
+  // across restarts too.
+  private nonceCache = new Map<string, number>();
 
   constructor(config: string | ClientConfig) {
     if (typeof config === 'string') {
@@ -917,6 +925,26 @@ export class OmneClient {
   /**
    * Send a transaction
    */
+  /**
+   * Allocate the next unique nonce for an address: seeded from the node's
+   * committed nonce (omne_getNonce) on first use, then incremented locally per
+   * call so concurrent/rapid sends never collide on the tx hash.
+   */
+  async nextNonce(address: string): Promise<number> {
+    if (!this.nonceCache.has(address)) {
+      let seed = 0;
+      try {
+        seed = Number((await this.request<any>('omne_getNonce', [address])) ?? 0);
+      } catch {
+        seed = 0;
+      }
+      this.nonceCache.set(address, seed);
+    }
+    const n = this.nonceCache.get(address)!;
+    this.nonceCache.set(address, n + 1);
+    return n;
+  }
+
   async sendTransaction(transaction: Transaction): Promise<TransactionReceipt> {
     // Validate transaction
     validateTransaction(transaction);
