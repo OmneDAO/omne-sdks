@@ -1,0 +1,66 @@
+{
+ "spec": "OMS-1",
+ "words": 24,
+ "wordlist": "BIP-39 English",
+ "wordlist_sha256": "2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda",
+ "seed_tag": "omne.seed.mld.v1",
+ "seed_tag_hex": "6f6d6e652e736565642e6d6c642e7631",
+ "departures": [
+  "NO PBKDF2 and NO passphrase \u2014 BIP-39's stretching protects low-entropy passphrases; 256 bits of true entropy has nothing to stretch, and a passphrase is a second secret that can be lost",
+  "seed is DOMAIN-SEPARATED: seed = SHA-256(TAG || u32le(32) || entropy), so the same 24 words in a Bitcoin wallet derive an unrelated key",
+  "lowercase ASCII only, single-space separated, NO Unicode normalisation"
+ ],
+ "valid": [
+  {
+   "label": "all-zero",
+   "entropy_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "seed_hex": "9f43823c51e4597a6752959361ded4f09cfe7b7720d9efcc382c1aeaddd1e853"
+  },
+  {
+   "label": "all-ff",
+   "entropy_hex": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote",
+   "seed_hex": "d06194110c4a7fac40d1c15ff3650832feae092ef7213f78bd73fb9c814469a6"
+  },
+  {
+   "label": "counting",
+   "entropy_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "mnemonic": "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch range attend journey unaware",
+   "seed_hex": "7b06950019fba58987748de035422f8355c8641c0f233339211ab0469d57e4d5"
+  },
+  {
+   "label": "sha256-of-omne",
+   "entropy_hex": "5deac27e0b5314af37c8c9e2580dd2320ffb86ae8c08483a9e1d31a9d6081054",
+   "mnemonic": "fuel figure panel birth course fiscal tennis bomb time scatter innocent goat zero select riot library else stay mansion globe output advice donor like",
+   "seed_hex": "317cbfad617aae507140330fee7dda18a6f683a19e12c1f2a2e75d69f99ae076"
+  }
+ ],
+ "invalid": [
+  {
+   "label": "bad-checksum",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon artefact",
+   "reason": "checksum"
+  },
+  {
+   "label": "23-words",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon",
+   "reason": "word count"
+  },
+  {
+   "label": "25-words",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art zoo",
+   "reason": "word count"
+  },
+  {
+   "label": "unknown-word",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon notaword",
+   "reason": "unknown word"
+  },
+  {
+   "label": "uppercase",
+   "mnemonic": "ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ABANDON ART",
+   "reason": "lowercase only"
+  }
+ ]
+}
