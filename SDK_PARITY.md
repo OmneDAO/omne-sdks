@@ -1,5 +1,30 @@
 # Omne SDK cross-language parity
 
+> **OMA-1 / OMS-1 supersede everything below about addresses and mnemonics.**
+> The `om1z…` scheme described further down is the PRE-GENESIS form and is gone:
+> `SHA-256("OMNE_PQC_ADDRESS_V1" ‖ pk)` with a witness-version byte is replaced by
+> `SHA-256(TAG_EOA ‖ u32le(len) ‖ pk)` in PLAIN bech32m, giving a fixed 61-char
+> address. Mnemonics are 24 words used as raw entropy with a domain-separated
+> seed — no PBKDF2, no passphrase, no derivation paths.
+>
+> **The ML-DSA-44 keygen below is unchanged and still authoritative.** It is what
+> makes the port safe: the Rust node's `fips204` reproduces `@noble`'s public
+> keys byte for byte, verified against the two seed vectors in this document, so
+> only the address and mnemonic layers moved.
+>
+> Conformance now lives in `vectors/`, copied from `OmneDAO/tessera`. Rust,
+> TypeScript, Python and Go all read those files rather than their own
+> reimplementations — a spec change is one diff and four failing suites, not a
+> silent divergence discovered when a wallet does not work.
+>
+> | | |
+> |---|---|
+> | Rust | `crates/omne-consensus-types/src/address.rs`, `mnemonic.rs` |
+> | TypeScript | `typescript/src/oma1.ts` |
+> | Python | `python/src/omne_sdk/oma1.py` |
+> | Go | `go/oma1.go` |
+
+
 The TypeScript SDK (`sdk/typescript`, `@omne/sdk`) is the reference. Any other
 language SDK must reproduce the identity stack **byte-for-byte** so the same
 mnemonic yields the same `om1z` address and signatures are accepted by the
