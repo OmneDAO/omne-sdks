@@ -73,7 +73,15 @@ function frame(bytes: Uint8Array): Uint8Array {
   return out;
 }
 
-function digest(tag: string, fields: Uint8Array[]): Uint8Array {
+/**
+ * SHA-256 over a 16-byte domain tag followed by length-framed fields.
+ *
+ * **Exported so there is exactly ONE framing implementation in this package.**
+ * §R0.2 requires a single implementation of a canonical preimage; a second copy
+ * in a transaction module would be pinned by a test that can only fail *after*
+ * someone edits one side.
+ */
+export function digest(tag: string, fields: Uint8Array[]): Uint8Array {
   const tagBytes = utf8ToBytes(tag);
   if (tagBytes.length !== 16) throw new Error(`domain tag must be 16 bytes: ${tag}`);
   const parts = [tagBytes, ...fields.map(frame)];

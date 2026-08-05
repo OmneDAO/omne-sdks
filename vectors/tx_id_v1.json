@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "amount": "0",
+      "chain_id": "0000000000000000000000000000000000000000000000000000000000000000",
+      "fee": "0",
+      "name": "zeros",
+      "nonce": "0",
+      "recipient": "0000000000000000000000000000000000000000000000000000000000000000",
+      "sender": "0000000000000000000000000000000000000000000000000000000000000000",
+      "tx_id": "16618440c4983c5ca51b65c9110a04ee82b2a9e38fc0b421c9ff16f0d0f5d759"
+    },
+    {
+      "amount": "1000000",
+      "chain_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "fee": "1000",
+      "name": "typical",
+      "nonce": "7",
+      "recipient": "3333333333333333333333333333333333333333333333333333333333333333",
+      "sender": "2222222222222222222222222222222222222222222222222222222222222222",
+      "tx_id": "1549d2b19adbc2ddb31626324174379e5f72597236145961d28763e64888c6af"
+    },
+    {
+      "amount": "340282366920938463463374607431768211455",
+      "chain_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "fee": "0",
+      "name": "max-amount",
+      "nonce": "0",
+      "recipient": "3333333333333333333333333333333333333333333333333333333333333333",
+      "sender": "2222222222222222222222222222222222222222222222222222222222222222",
+      "tx_id": "cd9175a2b77485a7848c1ea7d1f2a634b994494cc0f5f98bb43a6e840420ae55"
+    },
+    {
+      "amount": "0",
+      "chain_id": "1111111111111111111111111111111111111111111111111111111111111111",
+      "fee": "340282366920938463463374607431768211455",
+      "name": "max-fee-and-nonce",
+      "nonce": "18446744073709551615",
+      "recipient": "3333333333333333333333333333333333333333333333333333333333333333",
+      "sender": "2222222222222222222222222222222222222222222222222222222222222222",
+      "tx_id": "e93db19c440912484efe74fe954bd1170f9fe0ef5057716dc3bdac2d21b24353"
+    },
+    {
+      "amount": "1000000",
+      "chain_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "fee": "1000",
+      "name": "another-chain",
+      "nonce": "7",
+      "recipient": "3333333333333333333333333333333333333333333333333333333333333333",
+      "sender": "2222222222222222222222222222222222222222222222222222222222222222",
+      "tx_id": "be8232a01ccb9685a77ad3c195de8c9d521bdd55709d67fd1fd97b7d1eec9f85"
+    }
+  ],
+  "description": "Golden vectors for Transaction::id — SHA-256 over the domain-tagged, length-framed INTENT (chain_id, sender, recipient, amount, fee, nonce). The signature and public key are NOT in the preimage, so a client can derive the id before signing and before submitting. amount/fee/nonce are decimal STRINGS because u128 does not survive JSON numbers. Regenerate only via the ignored `regenerate` test in node/src/blocks/tx.rs and read the diff: a changed vector is a changed transaction id.",
+  "domain_tag": "omne.tx.body.v1."
+}
