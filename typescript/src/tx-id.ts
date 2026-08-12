@@ -2,7 +2,7 @@
  * **Tessera transaction identity.** `Transaction::id` in `node/src/blocks/tx.rs`.
  *
  * The id is SHA-256 over the domain-tagged, length-framed **intent** — chain id,
- * sender, recipient, amount, fee, nonce. The signature and public key are *not*
+ * sender, recipient, amount, fee, nonce, asset. The signature and public key are *not*
  * in the preimage, so a client derives the id **locally, before signing and
  * before submitting**, and it is the id the chain will record.
  *
@@ -25,6 +25,19 @@ import { digest } from './oma1';
 /** 16-byte domain tag. Note the trailing dot: the tag is padded to 16 bytes. */
 export const TAG_TX = 'omne.tx.body.v1.';
 
+/**
+ * Which asset a transfer moves.
+ *
+ * The discriminant is inside the **signed** preimage, so this is not cosmetic:
+ * a signature for `Omc` cannot authorise the same transfer in `Ogt`.
+ */
+export enum Asset {
+  /** Omne Coin — the commerce and utility asset, and the asset fees are paid in. */
+  Omc = 0,
+  /** Omne Governance Token — protocol voting rights, staked, and transferable. */
+  Ogt = 1,
+}
+
 export interface TransactionIntent {
   /** The chain's genesis root, 32 bytes. */
   chainId: Uint8Array;
@@ -34,6 +47,12 @@ export interface TransactionIntent {
   amount: bigint;
   fee: bigint;
   nonce: bigint;
+  /**
+   * Denominates `amount`. Defaults to {@link Asset.Omc}, the commerce asset —
+   * but a caller moving OGT **must** set it, because the node derives a
+   * different id and will reject the signature.
+   */
+  asset?: Asset;
 }
 
 /** Little-endian encoding of an unsigned integer into `n` bytes. */
@@ -47,6 +66,12 @@ function le(value: bigint, n: number): Uint8Array {
   }
   if (v !== 0n) throw new Error(`tx-id: value does not fit in ${n} bytes`);
   return out;
+}
+
+/** One byte, and an unknown asset is refused rather than coerced. */
+function assetByte(a: Asset): Uint8Array {
+  if (a !== Asset.Omc && a !== Asset.Ogt) throw new Error(`tx-id: unknown asset ${a}`);
+  return new Uint8Array([a]);
 }
 
 function expect32(b: Uint8Array, what: string): Uint8Array {
@@ -67,5 +92,6 @@ export function transactionId(tx: TransactionIntent): Uint8Array {
     le(tx.amount, 16),
     le(tx.fee, 16),
     le(tx.nonce, 8),
+    assetByte(tx.asset ?? Asset.Omc),
   ]);
 }
