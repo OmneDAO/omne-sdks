@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -22,6 +23,7 @@ type txCase struct {
 	Amount    string `json:"amount"`
 	Fee       string `json:"fee"`
 	Nonce     string `json:"nonce"`
+	Asset     string `json:"asset"`
 	TxID      string `json:"tx_id"`
 }
 
@@ -50,6 +52,15 @@ func mustHex(t *testing.T, s string) []byte {
 		t.Fatalf("hex: %v", err)
 	}
 	return b
+}
+
+func mustByte(t *testing.T, s string) uint8 {
+	t.Helper()
+	n, err := strconv.ParseUint(s, 10, 8)
+	if err != nil {
+		t.Fatalf("asset %q: %v", s, err)
+	}
+	return uint8(n)
 }
 
 func TestTxDomainTagIsSixteenBytesAndMatchesTheVectorFile(t *testing.T) {
@@ -87,6 +98,7 @@ func TestTransactionIDMatchesVectors(t *testing.T) {
 				Amount:    amount,
 				Fee:       fee,
 				Nonce:     nonce.Uint64(),
+				Asset:     Asset(mustByte(t, c.Asset)),
 			})
 			if err != nil {
 				t.Fatalf("TransactionID: %v", err)

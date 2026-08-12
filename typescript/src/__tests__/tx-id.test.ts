@@ -9,7 +9,7 @@
 
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { TAG_TX, transactionId } from '../tx-id';
+import { Asset, TAG_TX, transactionId } from '../tx-id';
 
 const V = join(__dirname, '../../../vectors');
 const vectors = JSON.parse(readFileSync(join(V, 'tx_id_v1.json'), 'utf8'));
@@ -33,8 +33,40 @@ describe('Tessera transaction id', () => {
       amount: BigInt(c.amount),
       fee: BigInt(c.fee),
       nonce: BigInt(c.nonce),
+      asset: Number(c.asset) as Asset,
     });
     expect(toHex(got)).toBe(c.tx_id);
+  });
+
+  it('the asset changes the id — the property the signed preimage exists for', () => {
+    // Without the asset in the preimage one signature authorises either asset,
+    // and flipping the byte in flight moves the governance token under a
+    // signature meant for the coin.
+    const base = {
+      chainId: new Uint8Array(32),
+      sender: new Uint8Array(32),
+      recipient: new Uint8Array(32),
+      amount: 1000n,
+      fee: 7n,
+      nonce: 4n,
+    };
+    expect(toHex(transactionId({ ...base, asset: Asset.Omc }))).not.toBe(
+      toHex(transactionId({ ...base, asset: Asset.Ogt })),
+    );
+  });
+
+  it('an unknown asset is refused rather than coerced', () => {
+    expect(() =>
+      transactionId({
+        chainId: new Uint8Array(32),
+        sender: new Uint8Array(32),
+        recipient: new Uint8Array(32),
+        amount: 0n,
+        fee: 0n,
+        nonce: 0n,
+        asset: 99 as Asset,
+      }),
+    ).toThrow();
   });
 
   it('every vector id is distinct', () => {

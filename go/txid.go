@@ -27,6 +27,20 @@ var ErrTxIntent = errors.New("txid: intent")
 //
 // Amounts are big.Int because they are u128 on the wire: uint64 cannot hold
 // them, and silently truncating one changes the id.
+// Asset names which asset a transfer moves. The discriminant is inside the
+// signed preimage, so it is not cosmetic: a signature for AssetOMC cannot
+// authorise the same transfer in AssetOGT.
+type Asset uint8
+
+const (
+	// AssetOMC is Omne Coin — the commerce and utility asset, and the asset
+	// fees are paid in. The default for a transfer.
+	AssetOMC Asset = 0
+	// AssetOGT is the Omne Governance Token — protocol voting rights, staked
+	// by validators, and transferable so the rights have a market.
+	AssetOGT Asset = 1
+)
+
 type TxIntent struct {
 	ChainID   []byte
 	Sender    []byte
@@ -34,6 +48,10 @@ type TxIntent struct {
 	Amount    *big.Int
 	Fee       *big.Int
 	Nonce     uint64
+	// Asset denominates Amount. The zero value is AssetOMC, which is the
+	// commerce asset and the right default — but a caller moving OGT must set
+	// it, because the node will derive a different id and reject the signature.
+	Asset Asset
 }
 
 // le encodes an unsigned integer little-endian into n bytes, refusing to
@@ -88,6 +106,10 @@ func TransactionID(tx TxIntent) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if tx.Asset != AssetOMC && tx.Asset != AssetOGT {
+		return nil, fmt.Errorf("%w: unknown asset %d", ErrTxIntent, tx.Asset)
+	}
 	// Reuse OMA-1's digest: §R0.2 requires exactly one framing implementation.
-	return digest(TagTx, tx.ChainID, tx.Sender, tx.Recipient, amount, fee, nonce), nil
+	return digest(TagTx, tx.ChainID, tx.Sender, tx.Recipient, amount, fee, nonce,
+		[]byte{byte(tx.Asset)}), nil
 }

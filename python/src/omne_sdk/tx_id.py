@@ -29,6 +29,8 @@ TAG_TX = b"omne.tx.body.v1."
 _U128_MAX = (1 << 128) - 1
 _U64_MAX = (1 << 64) - 1
 
+from enum import IntEnum
+
 
 def _le(value: int, num_bytes: int) -> bytes:
     if value < 0:
@@ -47,6 +49,26 @@ def _expect32(b: bytes, what: str) -> bytes:
     return b
 
 
+class Asset(IntEnum):
+    """Which asset a transfer moves.
+
+    The discriminant is inside the **signed** preimage, so a signature for
+    ``OMC`` cannot authorise the same transfer in ``OGT``.
+    """
+
+    #: Omne Coin — the commerce and utility asset, and the asset fees are paid in.
+    OMC = 0
+    #: Omne Governance Token — voting rights, staked, and transferable.
+    OGT = 1
+
+
+def _asset_byte(a: "Asset | int") -> bytes:
+    """One byte; an unknown asset is refused rather than coerced."""
+    if int(a) not in (Asset.OMC, Asset.OGT):
+        raise ValueError(f"tx_id: unknown asset {a}")
+    return bytes([int(a)])
+
+
 def transaction_id(
     *,
     chain_id: bytes,
@@ -55,6 +77,7 @@ def transaction_id(
     amount: int,
     fee: int,
     nonce: int,
+    asset: "Asset | int" = Asset.OMC,
 ) -> bytes:
     """The transaction id a Tessera node will derive for this intent.
 
@@ -69,4 +92,5 @@ def transaction_id(
         _le(amount, 16),
         _le(fee, 16),
         _le(nonce, 8),
+        _asset_byte(asset),
     )
