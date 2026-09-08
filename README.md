@@ -1,3 +1,11 @@
+> **Archived 2026-09-07.** This repository describes an earlier design of Omne
+> and is kept for the record, not for use. Omne was restarted from its intent
+> statement on 2026-08-16; nothing here should be read as current. The current
+> description is the research statement at <https://omne.foundation/statement>,
+> and the reason it exists is at <https://omne.foundation/why>.
+
+---
+
 # Omne SDKs
 
 Official client SDKs for the [Omne](https://omne.foundation) network — a post-quantum L1. Each SDK provides the same core surface: ML-DSA-44 (FIPS 204) wallet + key handling, contract ABI encoding/decoding, and a JSON-RPC client for reading state and submitting signed transactions.
